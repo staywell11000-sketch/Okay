@@ -1,9 +1,19 @@
 import OpenAI from "openai";
 
-if (!process.env.OPENAI_API_KEY) {
-  throw new Error("OPENAI_API_KEY must be set.");
+let _openai: OpenAI | null = null;
+
+export function getOpenAI(): OpenAI {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY is not set. AI features are unavailable.");
+  }
+  if (!_openai) {
+    _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+  return _openai;
 }
 
-export const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+export const openai = new Proxy({} as OpenAI, {
+  get(_target, prop) {
+    return getOpenAI()[prop as keyof OpenAI];
+  },
 });
