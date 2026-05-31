@@ -15,6 +15,7 @@ import dealsRouter from "./deals";
 import teamMembersRouter from "./teamMembers";
 import documentsRouter from "./documents";
 import appointmentsRouter from "./appointments";
+import settingsRouter from "./settings";
 
 const router: IRouter = Router();
 
@@ -34,5 +35,6 @@ router.use(dealsRouter);
 router.use(teamMembersRouter);
 router.use(documentsRouter);
 router.use(appointmentsRouter);
+router.use(settingsRouter);
 
 export default router;
