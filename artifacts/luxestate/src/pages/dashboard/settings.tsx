@@ -191,10 +191,14 @@ export default function SettingsPage() {
   const [security, setSecurity] = useState({ securityTwoFactorEnabled: false })
   const [timeFormat, setTimeFormat] = useState<"12h" | "24h">("12h")
   const [savingNotif, setSavingNotif] = useState(false)
-  const themeApplied = useRef(false)
+  const formInitialised = useRef(false)
 
-  // Populate form from fetched data (runs once on first load)
+  // Populate form fields from DB — runs once when data first arrives.
+  // Never calls setTheme() here: theme is already managed by next-themes
+  // (localStorage) and must not be overwritten on every settings mount.
   useEffect(() => {
+    if (!settings || formInitialised.current) return
+    formInitialised.current = true
     if (user) {
       setProfile({
         firstName: user.first_name ?? "",
@@ -205,32 +209,25 @@ export default function SettingsPage() {
         avatarUrl: user.avatar_url ?? "",
       })
     }
-    if (settings) {
-      setBusiness({
-        businessName:    settings.business_name ?? "",
-        businessLogoUrl: settings.business_logo_url ?? "",
-        whatsappNumber:  settings.whatsapp_number ?? "",
-        officeAddress:   settings.office_address ?? "",
-        teamSize:        settings.team_size ?? "",
-        position:        settings.position ?? "",
-      })
-      setNotifs({
-        notificationsEnabled: settings.notifications_enabled,
-        newLeadNotif:          settings.new_lead_notif,
-        dealStatusNotif:       settings.deal_status_notif,
-        whatsappNotif:         settings.whatsapp_notif,
-        weeklyReportsEnabled:  settings.weekly_reports_enabled,
-        marketingEmailsEnabled:settings.marketing_emails_enabled,
-      })
-      setSecurity({ securityTwoFactorEnabled: settings.security_two_factor_enabled })
-      setTimeFormat((settings.time_format as "12h" | "24h") ?? "12h")
-      // Only apply theme from DB on first load to avoid accidental overrides
-      if (settings.theme && !themeApplied.current) {
-        setTheme(settings.theme)
-        themeApplied.current = true
-      }
-    }
-  }, [user, settings])
+    setBusiness({
+      businessName:    settings.business_name ?? "",
+      businessLogoUrl: settings.business_logo_url ?? "",
+      whatsappNumber:  settings.whatsapp_number ?? "",
+      officeAddress:   settings.office_address ?? "",
+      teamSize:        settings.team_size ?? "",
+      position:        settings.position ?? "",
+    })
+    setNotifs({
+      notificationsEnabled:  settings.notifications_enabled,
+      newLeadNotif:          settings.new_lead_notif,
+      dealStatusNotif:       settings.deal_status_notif,
+      whatsappNotif:         settings.whatsapp_notif,
+      weeklyReportsEnabled:  settings.weekly_reports_enabled,
+      marketingEmailsEnabled:settings.marketing_emails_enabled,
+    })
+    setSecurity({ securityTwoFactorEnabled: settings.security_two_factor_enabled })
+    setTimeFormat((settings.time_format as "12h" | "24h") ?? "12h")
+  }, [settings, user])
 
   // ── Save handlers ─────────────────────────────────────
 

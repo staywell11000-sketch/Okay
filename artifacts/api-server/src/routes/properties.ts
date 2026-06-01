@@ -6,7 +6,8 @@ import { requireAuth } from "../middlewares/requireAuth";
 
 const router = Router();
 
-router.get("/properties", requireAuth, async (req, res) => {
+router.get("/properties", requireAuth, async (req: any, res) => {
+  const userId: string = req.userId;
   try {
     const page = Math.max(1, Number(req.query.page) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 20));
@@ -14,7 +15,7 @@ router.get("/properties", requireAuth, async (req, res) => {
     const status = req.query.status as string | undefined;
     const type = req.query.type as string | undefined;
 
-    const conditions: SQL[] = [];
+    const conditions: SQL[] = [eq(properties.listedById, userId)];
     if (search) {
       conditions.push(
         or(
@@ -32,7 +33,7 @@ router.get("/properties", requireAuth, async (req, res) => {
       conditions.push(eq(properties.type, type));
     }
 
-    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const where = and(...conditions);
 
     const [rows, totalResult] = await Promise.all([
       db

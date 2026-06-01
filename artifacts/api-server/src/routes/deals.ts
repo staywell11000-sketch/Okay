@@ -22,7 +22,8 @@ function sanitizeDeal(row: DealRow & { leadName?: string | null }) {
   };
 }
 
-router.get("/deals", requireAuth, async (req, res) => {
+router.get("/deals", requireAuth, async (req: any, res) => {
+  const userId: string = req.userId;
   try {
     const { stage, status } = req.query as { stage?: string; status?: string };
 
@@ -51,6 +52,7 @@ router.get("/deals", requireAuth, async (req, res) => {
       })
       .from(deals)
       .leftJoin(leadsTable, eq(deals.leadId, leadsTable.id))
+      .where(eq(deals.createdById, userId))
       .orderBy(sql`${deals.createdAt} DESC`);
 
     let result = rows.map(sanitizeDeal);

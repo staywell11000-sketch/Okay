@@ -1,3 +1,6 @@
 - [Meta OAuth callback URL](meta-oauth-callback.md) — must use Replit dev domain without port; port-suffixed URLs break Meta's redirect_uri validation.
 - [API server port conflict](api-server-port.md) — port 8080 zombie processes cause EADDRINUSE on restart; kill PIDs from ps aux before restarting the artifact workflow.
 - [Meta Lead Ads sync architecture](meta-lead-sync.md) — pluggable sync service in services/metaLeadSync.ts; scheduled every 15min; dedupes by externalId column; add future platforms alongside runMetaLeadSync().
+- [Settings theme override bug](settings-theme.md) — never call setTheme() in a useEffect that watches settings data; next-themes owns the theme via localStorage; only call setTheme() on explicit user clicks.
+- [Leads schema user isolation](leads-isolation.md) — leads table had no created_by_id column (added June 2026); GET routes use OR created_by_id IS NULL to preserve legacy data; analytics raw SQL must match.
+- [Data isolation pattern](data-isolation.md) — leads/deals/analytics filter by userId; use OR col IS NULL for nullable FK columns to handle pre-isolation data; properties uses listed_by_id, deals uses created_by_id.

@@ -9,6 +9,7 @@ import { Bell, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth-context"
 import { useCurrentUser } from "@/lib/user-api"
+import { useSettings, useUpdateSettings } from "@/lib/settings-api"
 import {
   useNotifications,
   useMarkNotificationRead,
@@ -69,6 +70,48 @@ function toUiNotification(n: ApiNotification, now: Date): Notification {
   }
 }
 
+function LiveClock() {
+  const [now, setNow] = useState(() => new Date())
+  const { data: settingsData } = useSettings()
+  const updateSettings = useUpdateSettings()
+
+  const savedFmt = (settingsData?.settings?.time_format as "12h" | "24h" | null | undefined) ?? "12h"
+  const [fmt, setFmt] = useState<"12h" | "24h">(savedFmt)
+
+  // Sync to DB value whenever it loads
+  useEffect(() => {
+    if (savedFmt) setFmt(savedFmt)
+  }, [savedFmt])
+
+  // Tick every second
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const timeStr = now.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: fmt === "12h",
+  })
+
+  const toggleFmt = () => {
+    const next = fmt === "12h" ? "24h" : "12h"
+    setFmt(next)
+    updateSettings.mutate({ timeFormat: next })
+  }
+
+  return (
+    <button
+      onClick={toggleFmt}
+      title={`Switch to ${fmt === "12h" ? "24-hour" : "12-hour"} format`}
+      className="hidden sm:flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-mono font-medium text-muted-foreground hover:bg-secondary/60 hover:text-foreground transition-colors"
+    >
+      <span className="tabular-nums">{timeStr}</span>
+    </button>
+  )
+}
+
 function GlobalHeader({
   unreadCount, notifOpen, onToggleNotif,
 }: {
@@ -80,7 +123,7 @@ function GlobalHeader({
   const title = getPageTitle(location)
 
   const today = new Date().toLocaleDateString("en-US", {
-    weekday: "long", month: "long", day: "numeric", year: "numeric",
+    weekday: "long", month: "long", day: "numeric",
   })
 
   const displayName =
@@ -99,10 +142,12 @@ function GlobalHeader({
     <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-border/40 bg-card/60 px-6 backdrop-blur-sm lg:px-8">
       <div className="flex items-center gap-3">
         <h1 className="text-base font-semibold text-foreground">{title}</h1>
-        <span className="hidden text-xs text-muted-foreground sm:block">{today}</span>
+        <span className="hidden text-xs text-muted-foreground lg:block">{today}</span>
       </div>
 
       <div className="flex items-center gap-1">
+        <LiveClock />
+
         <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground">
           <Search className="h-4 w-4" />
         </Button>

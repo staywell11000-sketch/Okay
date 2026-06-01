@@ -1,6 +1,7 @@
-import { pgTable, text, serial, integer, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, integer, timestamp, jsonb, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { users } from "./users";
 
 export const leadsTable = pgTable("leads", {
   id: serial("id").primaryKey(),
@@ -32,9 +33,13 @@ export const leadsTable = pgTable("leads", {
   externalId: text("external_id"),
   aiSummary: text("ai_summary"),
   suggestedActions: text("suggested_actions").array().default([]),
+  createdById: varchar("created_by_id", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+},
+(t) => [
+  index("leads_created_by_idx").on(t.createdById),
+]);
 
 export const insertLeadSchema = createInsertSchema(leadsTable).omit({
   id: true,

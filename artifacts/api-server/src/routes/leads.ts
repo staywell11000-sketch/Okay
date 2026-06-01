@@ -31,11 +31,13 @@ function sanitize(row: typeof leadsTable.$inferSelect) {
   };
 }
 
-router.get("/leads", requireAuth, async (_req, res) => {
+router.get("/leads", requireAuth, async (req: any, res) => {
+  const userId: string = req.userId;
   try {
     const rows = await db
       .select()
       .from(leadsTable)
+      .where(sql`(${leadsTable.createdById} = ${userId} OR ${leadsTable.createdById} IS NULL)`)
       .orderBy(sql`${leadsTable.createdAt} DESC`);
     res.json(rows.map(sanitize));
   } catch {
@@ -43,11 +45,13 @@ router.get("/leads", requireAuth, async (_req, res) => {
   }
 });
 
-router.get("/leads/:id", requireAuth, async (req, res) => {
+router.get("/leads/:id", requireAuth, async (req: any, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return void res.status(400).json({ error: "Invalid ID" });
+  const userId: string = req.userId;
   try {
-    const [row] = await db.select().from(leadsTable).where(eq(leadsTable.id, id));
+    const [row] = await db.select().from(leadsTable)
+      .where(sql`${leadsTable.id} = ${id} AND (${leadsTable.createdById} = ${userId} OR ${leadsTable.createdById} IS NULL)`);
     if (!row) return void res.status(404).json({ error: "Lead not found" });
     res.json(sanitize(row));
   } catch {
@@ -71,10 +75,10 @@ router.post("/leads/bulk-delete", requireAuth, async (req, res) => {
 router.post("/leads", requireAuth, async (req, res) => {
   try {
     const { id: _id, createdAt: _c, updatedAt: _u, ...body } = req.body;
-    const [row] = await db.insert(leadsTable).values(body).returning();
+    const userId = (req as any).userId;
+    const [row] = await db.insert(leadsTable).values({ ...body, createdById: userId }).returning();
     const saved = sanitize(row);
     res.status(201).json(saved);
-    const userId = (req as any).userId;
     // Fire automation trigger + notification after responding
     fireTrigger({
       triggerType: "lead_created",
