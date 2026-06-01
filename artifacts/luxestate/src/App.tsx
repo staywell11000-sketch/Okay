@@ -55,9 +55,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function OnboardingGuard({ children }: { children: React.ReactNode }) {
   const { session } = useAuth()
-  const { data: profile, isLoading } = useCurrentUser(session?.user?.id)
+  const { data: profile, isLoading, isError } = useCurrentUser(session?.user?.id)
   if (isLoading) return <LoadingScreen />
-  if (profile && !profile.onboarded) return <Redirect to="/onboarding" />
+  // isError means no DB record yet (404) — new user who needs to onboard
+  // profile exists but onboarded=false — returning user who didn't finish
+  if (isError || (profile && !profile.onboarded)) return <Redirect to="/onboarding" />
   return <>{children}</>
 }
 

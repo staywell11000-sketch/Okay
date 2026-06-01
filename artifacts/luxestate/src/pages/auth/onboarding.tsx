@@ -493,8 +493,9 @@ export default function OnboardingPage() {
         logoUrl = await uploadImage(b64, logoFile.name, "logo", token)
       }
 
-      // Save user profile
-      await fetch(`${BASE}/api/users/me`, {
+      // Save user profile — throw immediately if this fails so onboarded:true
+      // is never silently skipped (which would cause an infinite onboarding loop)
+      const userRes = await fetch(`${BASE}/api/users/me`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -502,12 +503,15 @@ export default function OnboardingPage() {
           firstName: form.firstName,
           lastName: form.lastName,
           phone: form.phone,
-          role: form.role,
           title: form.title,
           avatarUrl: avatarUrl || user?.user_metadata?.avatar_url || null,
           onboarded: true,
         }),
       })
+      if (!userRes.ok) {
+        const errBody = await userRes.json().catch(() => ({}))
+        throw new Error((errBody as any)?.error ?? `Failed to save profile (${userRes.status})`)
+      }
 
       // Save settings
       await fetch(`${BASE}/api/settings`, {

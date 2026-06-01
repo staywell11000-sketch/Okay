@@ -44,7 +44,11 @@ export default function SignInPage() {
       setLoading(false)
       return
     }
-    setLocation("/dashboard")
+    // Do NOT call setLocation here — the session state update is async.
+    // PublicOnlyRoute will detect the new session on the next render and
+    // redirect to /dashboard automatically, avoiding the race condition where
+    // ProtectedRoute sees session=null and bounces the user back to /sign-in.
+    // Keep loading=true so the user sees a spinner while the redirect happens.
   }
 
   const handleGoogle = async () => {
