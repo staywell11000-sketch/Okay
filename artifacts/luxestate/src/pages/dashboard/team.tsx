@@ -35,8 +35,8 @@ const roleConfig: Record<TeamRole, { label: string; color: string; bg: string }>
   agent:   { label: "Agent",   color: "text-primary",     bg: "bg-primary/10 border-primary/20" },
 }
 
-function initials(name: string) {
-  return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+function initials(name: string | null | undefined) {
+  return (name ?? "").split(" ").filter(Boolean).map((n) => n[0]).join("").toUpperCase().slice(0, 2) || "?"
 }
 
 function fmtDate(iso: string | null | undefined) {
@@ -65,9 +65,9 @@ function MemberForm({ initial, onSave, onCancel, saving, title }: MemberFormProp
   const set = <K extends keyof CreateMemberInput>(k: K, v: CreateMemberInput[K]) =>
     setForm((p) => ({ ...p, [k]: v }))
 
-  const handleSave = async () => {
-    if (!form.name.trim()) return toast.error("Name is required")
-    if (!form.email.trim()) return toast.error("Email is required")
+  const handleSave = async (): Promise<void> => {
+    if (!form.name.trim()) { toast.error("Name is required"); return }
+    if (!form.email.trim()) { toast.error("Email is required"); return }
     await onSave(form)
   }
 

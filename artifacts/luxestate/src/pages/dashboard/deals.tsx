@@ -72,8 +72,8 @@ function CreateDealModal({ onClose }: CreateModalProps) {
   const set = <K extends keyof CreateDealInput>(k: K, v: CreateDealInput[K]) =>
     setForm((p) => ({ ...p, [k]: v }))
 
-  const handleSubmit = async () => {
-    if (!form.title.trim()) return toast.error("Title is required")
+  const handleSubmit = async (): Promise<void> => {
+    if (!form.title.trim()) { toast.error("Title is required"); return }
     try {
       await createDeal.mutateAsync({
         ...form,

@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils"
 import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer, Tooltip } from "recharts"
 import { useLeads } from "@/lib/leads-api"
 import { useSalesInsights, useAnalyzeAll, useAnalyzeLead, type AnalyzeAllEvent } from "@/lib/ai-api"
+import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 
 const priorityColor: Record<string, string> = {

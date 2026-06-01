@@ -3,6 +3,7 @@ import { db, leadsTable, activities, deals, messages, conversations } from "@wor
 import { eq, desc, inArray, and, or, isNull } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
 import { openai } from "../lib/openai";
+import { fireTrigger } from "../services/automationEngine";
 
 const router: IRouter = Router();
 
@@ -149,6 +150,19 @@ router.post("/ai/analyze-lead/:id", requireAuth, async (req, res) => {
       .returning();
 
     res.json({ ...analysis, lead: updated });
+
+    // Fire automation triggers asynchronously after responding
+    if (updated) {
+      fireTrigger({
+        triggerType: "lead_score_updated",
+        leadId: updated.id,
+        lead: updated,
+        previousScore: lead.score ?? undefined,
+        newScore: analysis.score,
+        newStatus: updated.status,
+        userId,
+      }).catch(() => {});
+    }
   } catch (err) {
     console.error("AI analyze lead error:", err);
     res.status(500).json({ error: "Failed to analyze lead" });

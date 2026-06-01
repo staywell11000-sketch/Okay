@@ -1,4 +1,5 @@
 import { Switch, Route, Redirect, Router as WouterRouter } from "wouter"
+import { Component, type ReactNode } from "react"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { queryClient } from "@/lib/query-client"
 import { Toaster } from "@/components/ui/toaster"
@@ -7,6 +8,29 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider, useAuth } from "@/lib/auth-context"
 import { useCurrentUser } from "@/lib/user-api"
 import { Loader2 } from "lucide-react"
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null }
+  static getDerivedStateFromError(error: Error) { return { error } }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-4 bg-background p-8 text-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-destructive/10 text-3xl">⚠️</div>
+          <h2 className="text-lg font-semibold text-foreground">Something went wrong</h2>
+          <p className="max-w-sm text-sm text-muted-foreground">{this.state.error.message}</p>
+          <button
+            className="mt-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            onClick={() => { this.setState({ error: null }); window.location.href = "/dashboard" }}
+          >
+            Return to Dashboard
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 import NotFound from "@/pages/not-found"
 import MarketingPage from "@/pages/marketing"
 import SignInPage from "@/pages/auth/sign-in"
@@ -140,23 +164,27 @@ function Router() {
 
 function App() {
   return (
-    <WouterRouter base={basePath}>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="gold"
-          enableSystem={false}
-          themes={["gold", "midnight", "ocean", "emerald", "rose", "slate", "violet"]}
-        >
-          <TooltipProvider>
-            <AuthProvider>
-              <Router />
-              <Toaster />
-            </AuthProvider>
-          </TooltipProvider>
-        </ThemeProvider>
-      </QueryClientProvider>
-    </WouterRouter>
+    <ErrorBoundary>
+      <WouterRouter base={basePath}>
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="gold"
+            enableSystem={false}
+            themes={["gold", "midnight", "ocean", "emerald", "rose", "slate", "violet"]}
+          >
+            <TooltipProvider>
+              <AuthProvider>
+                <ErrorBoundary>
+                  <Router />
+                </ErrorBoundary>
+                <Toaster />
+              </AuthProvider>
+            </TooltipProvider>
+          </ThemeProvider>
+        </QueryClientProvider>
+      </WouterRouter>
+    </ErrorBoundary>
   )
 }
 

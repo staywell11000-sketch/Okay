@@ -72,11 +72,12 @@ const quickReplies = [
   "Confirmed, see you then!",
 ]
 
-const convStatusConfig = {
+const convStatusConfig: Record<string, { label: string; className: string }> = {
   active:   { label: "Active",   className: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
   pending:  { label: "Pending",  className: "bg-amber-500/10  text-amber-500  border-amber-500/20"  },
   resolved: { label: "Resolved", className: "bg-zinc-500/10   text-zinc-500   border-zinc-500/20"   },
 }
+const DEFAULT_STATUS_CONFIG = { label: "Unknown", className: "bg-zinc-500/10 text-zinc-500 border-zinc-500/20" }
 
 // ─── New Conversation Modal ───────────────────────────────
 
@@ -552,9 +553,9 @@ export default function MessagesPage() {
                         <div className="mt-1.5 flex items-center justify-between">
                           <Badge
                             variant="outline"
-                            className={cn("py-0 text-xs", convStatusConfig[conv.status].className)}
+                            className={cn("py-0 text-xs", (convStatusConfig[conv.status] ?? DEFAULT_STATUS_CONFIG).className)}
                           >
-                            {convStatusConfig[conv.status].label}
+                            {(convStatusConfig[conv.status] ?? DEFAULT_STATUS_CONFIG).label}
                           </Badge>
                           {conv.unread_count > 0 && (
                             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
@@ -600,9 +601,9 @@ export default function MessagesPage() {
                 <div className="flex items-center gap-2">
                   <Badge
                     variant="outline"
-                    className={convStatusConfig[selectedConv.status].className}
+                    className={(convStatusConfig[selectedConv.status] ?? DEFAULT_STATUS_CONFIG).className}
                   >
-                    {convStatusConfig[selectedConv.status].label}
+                    {(convStatusConfig[selectedConv.status] ?? DEFAULT_STATUS_CONFIG).label}
                   </Badge>
                   {selectedConv.lead_id && (
                     <Link href={`/dashboard/leads/${selectedConv.lead_id}`}>

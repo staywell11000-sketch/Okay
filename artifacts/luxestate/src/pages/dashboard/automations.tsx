@@ -224,9 +224,9 @@ function AutomationFormDialog({
   const removeAction = (i: number) =>
     setForm((f) => ({ ...f, actions: f.actions.filter((_, idx) => idx !== i) }))
 
-  const handleSave = async () => {
-    if (!form.name.trim()) return toast({ title: "Name is required", variant: "destructive" })
-    if (form.actions.length === 0) return toast({ title: "Add at least one action", variant: "destructive" })
+  const handleSave = async (): Promise<void> => {
+    if (!form.name.trim()) { toast({ title: "Name is required", variant: "destructive" }); return }
+    if (form.actions.length === 0) { toast({ title: "Add at least one action", variant: "destructive" }); return }
     try {
       if (isEdit && editingAutomation) {
         await update.mutateAsync({ id: editingAutomation.id, ...form })

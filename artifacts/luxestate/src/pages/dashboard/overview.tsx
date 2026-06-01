@@ -359,7 +359,7 @@ export default function OverviewPage() {
                       outerRadius={64}
                       strokeWidth={0}
                     >
-                      {data.sourceBreakdown.map((_, i) => (
+                      {(data.sourceBreakdown ?? []).map((_, i) => (
                         <Cell key={i} fill={SOURCE_COLORS[i % SOURCE_COLORS.length]} />
                       ))}
                     </Pie>
@@ -368,8 +368,8 @@ export default function OverviewPage() {
                 </ResponsiveContainer>
               </div>
               <div className="space-y-1.5">
-                {data.sourceBreakdown.slice(0, 5).map((s, i) => {
-                  const total = data.sourceBreakdown.reduce((sum, x) => sum + x.count, 0)
+                {(data.sourceBreakdown ?? []).slice(0, 5).map((s, i) => {
+                  const total = (data.sourceBreakdown ?? []).reduce((sum, x) => sum + x.count, 0)
                   const pct = total > 0 ? Math.round((s.count / total) * 100) : 0
                   return (
                     <div key={s.source} className="flex items-center gap-2 text-xs">
@@ -494,7 +494,7 @@ export default function OverviewPage() {
                     className="flex items-center gap-3"
                   >
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-500/10 text-xs font-semibold text-blue-500">
-                      {lead.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+                      {(lead.name ?? "").split(" ").filter(Boolean).map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "?"}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-foreground">{lead.name}</p>

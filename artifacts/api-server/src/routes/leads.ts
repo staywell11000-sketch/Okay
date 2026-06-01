@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, leadsTable } from "@workspace/db";
-import { eq, sql, and, or, ilike } from "drizzle-orm";
+import { eq, sql, and, or, ilike, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
 import { fireTrigger } from "../services/automationEngine";
 import { createNotification } from "../services/notificationService";
@@ -106,7 +106,38 @@ router.post("/leads/bulk", requireAuth, async (req: any, res) => {
       return { ...body, createdById: userId };
     });
 
-    const created = await db.insert(leadsTable).values(values).returning();
+    // Deduplicate by email against existing leads owned by this user
+    const emails = values.map((v) => v.email).filter(Boolean) as string[];
+    const existingEmails = new Set<string>();
+    if (emails.length > 0) {
+      const existing = await db
+        .select({ email: leadsTable.email })
+        .from(leadsTable)
+        .where(
+          and(
+            inArray(leadsTable.email, emails),
+            or(eq(leadsTable.createdById, userId), sql`${leadsTable.createdById} IS NULL`)
+          )
+        );
+      existing.forEach((r) => { if (r.email) existingEmails.add(r.email.toLowerCase()); });
+    }
+
+    // Also deduplicate within the batch itself (keep first occurrence per email)
+    const seenEmails = new Set<string>();
+    const deduped = values.filter((v) => {
+      const key = v.email?.toLowerCase() ?? "";
+      if (!key) return true; // no email — always allow
+      if (existingEmails.has(key) || seenEmails.has(key)) return false;
+      seenEmails.add(key);
+      return true;
+    });
+    const skipped = values.length - deduped.length;
+
+    if (deduped.length === 0) {
+      return void res.status(200).json({ created: [], errors: [], skipped, message: "All leads already exist — no duplicates imported." });
+    }
+
+    const created = await db.insert(leadsTable).values(deduped).returning();
     const sanitized = created.map(sanitize);
 
     // Fire triggers asynchronously — don't block the response
@@ -130,7 +161,7 @@ router.post("/leads/bulk", requireAuth, async (req: any, res) => {
       ]))
     ).catch(() => {});
 
-    res.status(201).json({ created: sanitized, errors: [] });
+    res.status(201).json({ created: sanitized, errors: [], skipped });
   } catch (err: any) {
     console.error("Bulk import error:", err);
     res.status(500).json({ error: "Bulk import failed", message: err?.message });

@@ -152,13 +152,13 @@ export default function AnalyticsPage() {
 
   const {
     kpis,
-    sourceBreakdown,
-    agentPerformance,
-    dealsByStage,
-    messageActivity,
-    conversionTrend,
-    statusBreakdown,
-    priorityBreakdown,
+    sourceBreakdown = [],
+    agentPerformance = [],
+    dealsByStage = [],
+    messageActivity = [],
+    conversionTrend = [],
+    statusBreakdown = [],
+    priorityBreakdown = [],
   } = data
 
   const sourceWithColors = sourceBreakdown.map((s, i) => ({

@@ -11,6 +11,8 @@ import {
   ExternalLink,
   Info,
   Clock,
+  Copy,
+  Check,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -95,6 +97,33 @@ const PROVIDERS: ProviderMeta[] = [
     ),
   },
 ]
+
+// ─── Helpers ──────────────────────────────────────────────
+
+function getCallbackUrl(provider: Provider): string {
+  const origin = window.location.origin
+  return `${origin}/api/connected-accounts/callback/${provider}`
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+  return (
+    <button
+      onClick={handleCopy}
+      className="ml-1 shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+      title="Copy to clipboard"
+    >
+      {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+    </button>
+  )
+}
 
 // ─── Status badge ─────────────────────────────────────────
 
@@ -238,9 +267,20 @@ function ProviderCard({
             </div>
           </div>
 
+          {/* Redirect URI row — always visible so users know what to register */}
+          <div className="mt-2.5 flex items-center gap-1.5 rounded-lg bg-secondary/30 px-2.5 py-1.5">
+            <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              Callback URL
+            </span>
+            <code className="min-w-0 flex-1 truncate font-mono text-[10px] text-foreground/70">
+              {getCallbackUrl(meta.id)}
+            </code>
+            <CopyButton text={getCallbackUrl(meta.id)} />
+          </div>
+
           {/* Connected account details */}
           {isConnected && (
-            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+            <div className="mt-2.5 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
               {account.account_name && (
                 <span className="font-medium text-foreground">{account.account_name}</span>
               )}
@@ -416,26 +456,34 @@ export function ConnectedAccountsTab({ connectedProvider, errorMessage }: Props)
         </div>
       )}
 
-      {/* Callback URLs info */}
+      {/* Callback URLs summary panel */}
       <div className="glass-card p-5 space-y-3">
         <div className="flex items-center gap-2">
-          <Info className="h-4 w-4 text-muted-foreground" />
-          <h4 className="text-sm font-medium text-foreground">OAuth Redirect URIs</h4>
+          <Info className="h-4 w-4 text-primary" />
+          <h4 className="text-sm font-semibold text-foreground">Developer Portal Setup</h4>
         </div>
         <p className="text-xs text-muted-foreground">
-          Register these callback URLs in your developer portals before connecting:
+          Each platform requires you to whitelist the exact OAuth callback URL shown on each card above.
+          Copy and paste these into your app's "Valid OAuth Redirect URIs" setting:
         </p>
         <div className="space-y-1.5">
-          {(["whatsapp", "facebook", "instagram", "tiktok"] as Provider[]).map((p) => (
-            <div key={p} className="flex items-center gap-2 rounded-lg bg-secondary/30 px-3 py-2">
-              <span className="w-20 shrink-0 text-[11px] font-medium capitalize text-muted-foreground">{p}</span>
-              <code className="flex-1 truncate text-[11px] text-foreground">
-                {`${window.location.origin}/api/connected-accounts/callback/${p}`}
-                <span className="text-muted-foreground/60"> (replace origin with your API server URL on port 8080)</span>
-              </code>
-            </div>
-          ))}
+          {(["whatsapp", "facebook", "instagram", "tiktok"] as Provider[]).map((p) => {
+            const url = getCallbackUrl(p)
+            return (
+              <div key={p} className="flex items-center gap-2 rounded-lg bg-secondary/30 px-3 py-2">
+                <span className="w-[72px] shrink-0 text-[11px] font-semibold capitalize text-muted-foreground">{p}</span>
+                <code className="min-w-0 flex-1 truncate text-[11px] text-foreground">{url}</code>
+                <CopyButton text={url} />
+              </div>
+            )
+          })}
         </div>
+        <p className="text-[11px] text-muted-foreground">
+          For Meta apps (Facebook, Instagram, WhatsApp): go to{" "}
+          <span className="font-medium text-foreground">Facebook for Developers → Your App → Facebook Login → Settings → Valid OAuth Redirect URIs</span>.
+          For TikTok: go to{" "}
+          <span className="font-medium text-foreground">TikTok Developer Portal → Your App → Redirect URIs</span>.
+        </p>
       </div>
 
       {/* Disconnect confirmation overlay */}

@@ -132,8 +132,8 @@ export function QuickActions({ onLeadAdded }: QuickActionsProps) {
       <AddLeadModal
         open={showAddLead}
         onClose={() => setShowAddLead(false)}
-        onAdd={(lead) => {
-          onLeadAdded?.(lead)
+        onAdd={async (lead) => {
+          onLeadAdded?.(lead as any)
           navigate("/dashboard/leads")
         }}
       />

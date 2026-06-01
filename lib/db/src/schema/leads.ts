@@ -39,6 +39,11 @@ export const leadsTable = pgTable("leads", {
 },
 (t) => [
   index("leads_created_by_idx").on(t.createdById),
+  index("leads_status_idx").on(t.status),
+  index("leads_priority_idx").on(t.priority),
+  index("leads_source_idx").on(t.source),
+  index("leads_email_idx").on(t.email),
+  index("leads_assigned_to_idx").on(t.assignedTo),
 ]);
 
 export const insertLeadSchema = createInsertSchema(leadsTable).omit({

@@ -627,7 +627,9 @@ export function LeadsTable({ leads, isLoading: externalLoading, onCreate, onUpda
                                 {lead.name}
                               </p>
                               {lead.duplicateOf && (
-                                <AlertTriangle className="h-3 w-3 shrink-0 text-amber-500" title="Possible duplicate" />
+                                <span title="Possible duplicate">
+                                  <AlertTriangle className="h-3 w-3 shrink-0 text-amber-500" />
+                                </span>
                               )}
                             </div>
                             <p className="max-w-[160px] truncate text-xs text-muted-foreground">{lead.email}</p>

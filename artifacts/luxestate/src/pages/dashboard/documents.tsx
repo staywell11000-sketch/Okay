@@ -85,9 +85,9 @@ function UploadModal({ onClose }: UploadModalProps) {
     if (f) handleFile(f)
   }, [title])
 
-  const handleUpload = async () => {
-    if (!file) return toast.error("Please select a file")
-    if (!title.trim()) return toast.error("Please enter a title")
+  const handleUpload = async (): Promise<void> => {
+    if (!file) { toast.error("Please select a file"); return }
+    if (!title.trim()) { toast.error("Please enter a title"); return }
     setUploading(true)
     try {
       const { filePath, fileUrl } = await uploadToSupabase(file, setProgress)

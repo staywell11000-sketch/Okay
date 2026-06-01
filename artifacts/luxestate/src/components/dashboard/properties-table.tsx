@@ -469,7 +469,7 @@ function PropertyRow({
   onDelete: () => void
   onStatusChange: (s: PropertyStatus) => void
 }) {
-  const initials = property.agent.split(" ").map((n) => n[0]).join("").slice(0, 2)
+  const initials = (property.agent ?? "").split(" ").filter(Boolean).map((n) => n[0]).join("").slice(0, 2) || "?"
 
   return (
     <motion.tr
