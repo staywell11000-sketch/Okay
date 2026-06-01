@@ -1,5 +1,6 @@
 import { Switch, Route, Redirect, Router as WouterRouter } from "wouter"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClientProvider } from "@tanstack/react-query"
+import { queryClient } from "@/lib/query-client"
 import { Toaster } from "@/components/ui/toaster"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { ThemeProvider } from "@/components/theme-provider"
@@ -28,17 +29,6 @@ import CalendarPage from "@/pages/dashboard/calendar"
 import SettingsPage from "@/pages/dashboard/settings"
 import IntegrationsPage from "@/pages/dashboard/integrations"
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: (failureCount, error: any) => {
-        if (error?.message?.includes("401") || error?.status === 401) return false
-        return failureCount < 1
-      },
-      refetchOnWindowFocus: false,
-    },
-  },
-})
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "")
 

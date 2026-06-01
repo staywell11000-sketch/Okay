@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Lead } from "@/components/dashboard/leads-types";
 import { supabase } from "./supabase";
+import { useAuth } from "./auth-context";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
@@ -26,9 +27,11 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export function useLeads() {
+  const { session } = useAuth();
   return useQuery<Lead[]>({
     queryKey: ["leads"],
     queryFn: () => apiFetch<Lead[]>("/leads"),
+    enabled: !!session,
     staleTime: 30_000,
   });
 }

@@ -59,13 +59,17 @@ router.get("/leads/:id", requireAuth, async (req: any, res) => {
   }
 });
 
-router.post("/leads/bulk-delete", requireAuth, async (req, res) => {
+router.post("/leads/bulk-delete", requireAuth, async (req: any, res) => {
   const { ids } = req.body as { ids: number[] };
+  const userId: string = req.userId;
   if (!Array.isArray(ids) || ids.length === 0) {
     return void res.status(400).json({ error: "ids array required" });
   }
   try {
-    await db.delete(leadsTable).where(sql`${leadsTable.id} = ANY(ARRAY[${sql.join(ids.map((id) => sql`${id}`), sql`, `)}]::int[])`);
+    await db.delete(leadsTable).where(
+      sql`${leadsTable.id} = ANY(ARRAY[${sql.join(ids.map((id) => sql`${id}`), sql`, `)}]::int[])
+          AND (${leadsTable.createdById} = ${userId} OR ${leadsTable.createdById} IS NULL)`
+    );
     res.status(204).send();
   } catch {
     res.status(500).json({ error: "Failed to bulk delete leads" });
@@ -103,16 +107,18 @@ router.post("/leads", requireAuth, async (req, res) => {
   }
 });
 
-router.put("/leads/:id", requireAuth, async (req, res) => {
+router.put("/leads/:id", requireAuth, async (req: any, res) => {
   const id = parseInt(req.params.id, 10);
+  const userId: string = req.userId;
   if (isNaN(id)) return void res.status(400).json({ error: "Invalid ID" });
   try {
-    const [previousLead] = await db.select().from(leadsTable).where(eq(leadsTable.id, id));
-    const { id: _id, createdAt: _c, updatedAt: _u, ...body } = req.body;
+    const [previousLead] = await db.select().from(leadsTable)
+      .where(sql`${leadsTable.id} = ${id} AND (${leadsTable.createdById} = ${userId} OR ${leadsTable.createdById} IS NULL)`);
+    const { id: _id, createdAt: _c, updatedAt: _u, createdById: _cb, ...body } = req.body;
     const [row] = await db
       .update(leadsTable)
       .set({ ...body, updatedAt: new Date() })
-      .where(eq(leadsTable.id, id))
+      .where(sql`${leadsTable.id} = ${id} AND (${leadsTable.createdById} = ${userId} OR ${leadsTable.createdById} IS NULL)`)
       .returning();
     if (!row) return void res.status(404).json({ error: "Lead not found" });
     res.json(sanitize(row));
@@ -142,16 +148,18 @@ router.put("/leads/:id", requireAuth, async (req, res) => {
   }
 });
 
-router.patch("/leads/:id", requireAuth, async (req, res) => {
+router.patch("/leads/:id", requireAuth, async (req: any, res) => {
   const id = parseInt(req.params.id, 10);
+  const userId: string = req.userId;
   if (isNaN(id)) return void res.status(400).json({ error: "Invalid ID" });
   try {
-    const [previousLead] = await db.select().from(leadsTable).where(eq(leadsTable.id, id));
-    const { id: _id, createdAt: _c, updatedAt: _u, ...body } = req.body;
+    const [previousLead] = await db.select().from(leadsTable)
+      .where(sql`${leadsTable.id} = ${id} AND (${leadsTable.createdById} = ${userId} OR ${leadsTable.createdById} IS NULL)`);
+    const { id: _id, createdAt: _c, updatedAt: _u, createdById: _cb, ...body } = req.body;
     const [row] = await db
       .update(leadsTable)
       .set({ ...body, updatedAt: new Date() })
-      .where(eq(leadsTable.id, id))
+      .where(sql`${leadsTable.id} = ${id} AND (${leadsTable.createdById} = ${userId} OR ${leadsTable.createdById} IS NULL)`)
       .returning();
     if (!row) return void res.status(404).json({ error: "Lead not found" });
     res.json(sanitize(row));
@@ -179,11 +187,14 @@ router.patch("/leads/:id", requireAuth, async (req, res) => {
   }
 });
 
-router.delete("/leads/:id", requireAuth, async (req, res) => {
+router.delete("/leads/:id", requireAuth, async (req: any, res) => {
   const id = parseInt(req.params.id, 10);
+  const userId: string = req.userId;
   if (isNaN(id)) return void res.status(400).json({ error: "Invalid ID" });
   try {
-    await db.delete(leadsTable).where(eq(leadsTable.id, id));
+    await db.delete(leadsTable).where(
+      sql`${leadsTable.id} = ${id} AND (${leadsTable.createdById} = ${userId} OR ${leadsTable.createdById} IS NULL)`
+    );
     res.status(204).send();
   } catch {
     res.status(500).json({ error: "Failed to delete lead" });

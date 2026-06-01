@@ -72,8 +72,9 @@ router.get("/deals", requireAuth, async (req: any, res) => {
   }
 });
 
-router.get("/deals/:id", requireAuth, async (req, res) => {
+router.get("/deals/:id", requireAuth, async (req: any, res) => {
   const id = parseInt(req.params.id, 10);
+  const userId: string = req.userId;
   if (isNaN(id)) return void res.status(400).json({ error: "Invalid ID" });
 
   try {
@@ -102,7 +103,7 @@ router.get("/deals/:id", requireAuth, async (req, res) => {
       })
       .from(deals)
       .leftJoin(leadsTable, eq(deals.leadId, leadsTable.id))
-      .where(eq(deals.id, id));
+      .where(and(eq(deals.id, id), eq(deals.createdById, userId)));
 
     if (!row) return void res.status(404).json({ error: "Deal not found" });
     res.json(sanitizeDeal(row));
@@ -134,12 +135,13 @@ router.post("/deals", requireAuth, async (req, res) => {
   }
 });
 
-router.patch("/deals/:id", requireAuth, async (req, res) => {
+router.patch("/deals/:id", requireAuth, async (req: any, res) => {
   const id = parseInt(req.params.id, 10);
+  const userId: string = req.userId;
   if (isNaN(id)) return void res.status(400).json({ error: "Invalid ID" });
 
   try {
-    const { id: _id, createdAt: _c, updatedAt: _u, status: _s, leadName: _ln, ...body } = req.body;
+    const { id: _id, createdAt: _c, updatedAt: _u, status: _s, leadName: _ln, createdById: _cb, ...body } = req.body;
 
     const updateData: Partial<typeof deals.$inferInsert> = {
       ...body,
@@ -151,13 +153,13 @@ router.patch("/deals/:id", requireAuth, async (req, res) => {
     }
 
     const prevRows = await db.select({ stage: deals.stage, createdById: deals.createdById })
-      .from(deals).where(eq(deals.id, id)).limit(1);
+      .from(deals).where(and(eq(deals.id, id), eq(deals.createdById, userId))).limit(1);
     const prevStage = prevRows[0]?.stage;
 
     const [row] = await db
       .update(deals)
       .set(updateData)
-      .where(eq(deals.id, id))
+      .where(and(eq(deals.id, id), eq(deals.createdById, userId)))
       .returning();
 
     if (!row) return void res.status(404).json({ error: "Deal not found" });
@@ -186,12 +188,13 @@ router.patch("/deals/:id", requireAuth, async (req, res) => {
   }
 });
 
-router.delete("/deals/:id", requireAuth, async (req, res) => {
+router.delete("/deals/:id", requireAuth, async (req: any, res) => {
   const id = parseInt(req.params.id, 10);
+  const userId: string = req.userId;
   if (isNaN(id)) return void res.status(400).json({ error: "Invalid ID" });
 
   try {
-    await db.delete(deals).where(eq(deals.id, id));
+    await db.delete(deals).where(and(eq(deals.id, id), eq(deals.createdById, userId)));
     res.status(204).send();
   } catch (err) {
     console.error("Deal delete error:", err);

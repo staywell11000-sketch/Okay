@@ -1,17 +1,29 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "./supabase";
+import { useAuth } from "./auth-context";
 import {
   Property, PropertyCategory, PropertyStatus,
 } from "@/components/dashboard/properties-data";
 
-const BASE = "/api";
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
+
+async function getToken(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? null;
+}
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
+  const token = await getToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options?.headers as Record<string, string>),
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE}${path}`, { ...options, headers });
   if (res.status === 204) return undefined as T;
-  const data = await res.json();
+  let data: any;
+  try { data = await res.json(); } catch { data = {}; }
   if (!res.ok) throw new Error(data?.error ?? `Request failed: ${res.status}`);
   return data as T;
 }
@@ -89,7 +101,7 @@ export type PropertiesFilters = {
 export function objectPathToUrl(objectPath: string): string {
   if (!objectPath) return "";
   if (objectPath.startsWith("http")) return objectPath;
-  return objectPath.replace(/^\/objects/, "/api/storage/objects");
+  return objectPath.replace(/^\/objects/, `${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/storage/objects`);
 }
 
 // ── Data mappers ─────────────────────────────────────────────────────────────
@@ -169,6 +181,7 @@ export const PROPERTIES_KEY = ["properties"] as const;
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
 export function useProperties(filters?: PropertiesFilters) {
+  const { session } = useAuth();
   const params = new URLSearchParams();
   if (filters?.search) params.set("search", filters.search);
   if (filters?.status && filters.status !== "all") params.set("status", filters.status);
@@ -180,6 +193,7 @@ export function useProperties(filters?: PropertiesFilters) {
   return useQuery<PropertyListResponse>({
     queryKey: [...PROPERTIES_KEY, filters],
     queryFn: () => apiFetch<PropertyListResponse>(`/properties${qs}`),
+    enabled: !!session,
     staleTime: 30_000,
     select: (data) => ({
       ...data,

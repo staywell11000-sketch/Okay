@@ -1,7 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "./supabase";
+import { useAuth } from "./auth-context";
 
-const BASE = "/api";
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
 export type DealStage = "new" | "contacted" | "negotiation" | "won" | "lost";
 export type DealStatus = "active" | "closed";
@@ -64,12 +65,14 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export function useDeals(stage?: string) {
+  const { session } = useAuth();
   return useQuery<Deal[]>({
     queryKey: ["deals", stage],
     queryFn: () => {
       const params = stage && stage !== "all" ? `?stage=${stage}` : "";
       return apiFetch<Deal[]>(`/deals${params}`);
     },
+    enabled: !!session,
     staleTime: 30_000,
   });
 }

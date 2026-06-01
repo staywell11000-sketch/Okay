@@ -98,15 +98,16 @@ router.post("/properties", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/properties/:id", requireAuth, async (req, res) => {
+router.get("/properties/:id", requireAuth, async (req: any, res) => {
   try {
     const id = Number(req.params.id);
+    const userId: string = req.userId;
     if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
 
     const [row] = await db
       .select()
       .from(properties)
-      .where(eq(properties.id, id))
+      .where(and(eq(properties.id, id), eq(properties.listedById, userId)))
       .limit(1);
 
     if (!row) return res.status(404).json({ error: "Property not found" });
@@ -117,9 +118,10 @@ router.get("/properties/:id", requireAuth, async (req, res) => {
   }
 });
 
-router.put("/properties/:id", requireAuth, async (req, res) => {
+router.put("/properties/:id", requireAuth, async (req: any, res) => {
   try {
     const id = Number(req.params.id);
+    const userId: string = req.userId;
     if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
 
     const body = req.body;
@@ -149,7 +151,7 @@ router.put("/properties/:id", requireAuth, async (req, res) => {
         metadata: body.metadata,
         updatedAt: new Date(),
       })
-      .where(eq(properties.id, id))
+      .where(and(eq(properties.id, id), eq(properties.listedById, userId)))
       .returning();
 
     if (!row) return res.status(404).json({ error: "Property not found" });
@@ -160,9 +162,10 @@ router.put("/properties/:id", requireAuth, async (req, res) => {
   }
 });
 
-router.patch("/properties/:id/status", requireAuth, async (req, res) => {
+router.patch("/properties/:id/status", requireAuth, async (req: any, res) => {
   try {
     const id = Number(req.params.id);
+    const userId: string = req.userId;
     if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
 
     const { status } = req.body;
@@ -171,7 +174,7 @@ router.patch("/properties/:id/status", requireAuth, async (req, res) => {
     const [row] = await db
       .update(properties)
       .set({ status, updatedAt: new Date() })
-      .where(eq(properties.id, id))
+      .where(and(eq(properties.id, id), eq(properties.listedById, userId)))
       .returning();
 
     if (!row) return res.status(404).json({ error: "Property not found" });
@@ -182,12 +185,13 @@ router.patch("/properties/:id/status", requireAuth, async (req, res) => {
   }
 });
 
-router.delete("/properties/:id", requireAuth, async (req, res) => {
+router.delete("/properties/:id", requireAuth, async (req: any, res) => {
   try {
     const id = Number(req.params.id);
+    const userId: string = req.userId;
     if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
 
-    await db.delete(properties).where(eq(properties.id, id));
+    await db.delete(properties).where(and(eq(properties.id, id), eq(properties.listedById, userId)));
     res.status(204).send();
   } catch (err) {
     console.error(err);

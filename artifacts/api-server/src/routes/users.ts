@@ -20,7 +20,8 @@ router.get("/users/me", requireAuth, async (req: any, res) => {
 
 router.put("/users/me", requireAuth, async (req: any, res) => {
   try {
-    const { email, firstName, lastName, role, title, phone, avatarUrl, onboarded } = req.body;
+    // Explicitly whitelist safe fields — never allow role to be set by the user
+    const { email, firstName, lastName, title, phone, avatarUrl, onboarded } = req.body;
 
     const [existing] = await db.select().from(users).where(eq(users.id, req.userId));
 
@@ -31,7 +32,6 @@ router.put("/users/me", requireAuth, async (req: any, res) => {
           ...(email !== undefined && { email }),
           ...(firstName !== undefined && { firstName }),
           ...(lastName !== undefined && { lastName }),
-          ...(role !== undefined && { role }),
           ...(title !== undefined && { title }),
           ...(phone !== undefined && { phone }),
           ...(avatarUrl !== undefined && { avatarUrl }),
@@ -50,7 +50,7 @@ router.put("/users/me", requireAuth, async (req: any, res) => {
         email: email || "",
         firstName,
         lastName,
-        role: role || "agent",
+        role: "agent", // always default to agent on creation, never from body
         title,
         phone,
         avatarUrl,

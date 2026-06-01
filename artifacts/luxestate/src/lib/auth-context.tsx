@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react"
 import { Session, User } from "@supabase/supabase-js"
 import { supabase } from "./supabase"
+import { queryClient } from "./query-client"
 
 type AuthContextType = {
   session: Session | null
@@ -28,16 +29,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session)
       setUser(session?.user ?? null)
       setLoading(false)
+
+      // Clear all cached query data when the user signs out so the next
+      // user who logs in on this browser can't see stale data.
+      if (event === "SIGNED_OUT") {
+        queryClient.clear()
+      }
     })
 
     return () => subscription.unsubscribe()
   }, [])
 
   const signOut = async () => {
+    queryClient.clear()
     await supabase.auth.signOut()
   }
 
