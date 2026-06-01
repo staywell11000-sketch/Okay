@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Menu, X, Sun, Moon } from "lucide-react"
 import { useTheme } from "next-themes"
+import { PWAInstallButton } from "@/components/pwa-install-button"
 
 const navLinks = [
   { href: "#features", label: "Features" },
@@ -20,9 +21,7 @@ export function MarketingHeader() {
 
   useEffect(() => {
     setMounted(true)
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 20)
-    }
+    const handleScroll = () => setIsScrolled(window.scrollY > 20)
     window.addEventListener("scroll", handleScroll)
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
@@ -66,6 +65,7 @@ export function MarketingHeader() {
             </nav>
 
             <div className="hidden md:flex items-center gap-3">
+              <PWAInstallButton variant="header" />
               <Button
                 variant="ghost"
                 size="icon"
@@ -152,6 +152,7 @@ export function MarketingHeader() {
                 <Link href="/sign-up" onClick={() => setIsMobileMenuOpen(false)}>
                   <Button className="w-full font-medium mt-1">Get Started</Button>
                 </Link>
+                <PWAInstallButton variant="inline" className="mt-1 w-full" />
               </nav>
             </div>
           </motion.div>

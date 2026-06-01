@@ -7,6 +7,7 @@ import { ReactNode } from "react"
 import { motion } from "framer-motion"
 import { Bell, Search, Clock, X, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { PWAInstallButton } from "@/components/pwa-install-button"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { useAuth } from "@/lib/auth-context"
 import { useCurrentUser } from "@/lib/user-api"
@@ -318,6 +319,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
+      <PWAInstallButton variant="banner" />
       <Sidebar
         collapsed={collapsed}
         setCollapsed={setCollapsed}

@@ -2,6 +2,7 @@ import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Sparkles, Building2, Users, TrendingUp } from "lucide-react"
 import { Link } from "wouter"
+import { PWAInstallButton } from "@/components/pwa-install-button"
 
 const stats = [
   { value: "50K+", label: "Active Users", icon: Users },
@@ -85,6 +86,9 @@ export function Hero() {
               </Button>
             </Link>
           </motion.div>
+
+          {/* PWA Install Button */}
+          <PWAInstallButton variant="hero" className="mt-4" />
 
           <motion.div
             initial={{ opacity: 0, y: 20 }}

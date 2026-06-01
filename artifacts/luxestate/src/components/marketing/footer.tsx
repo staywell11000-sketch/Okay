@@ -1,6 +1,7 @@
 import { Link } from "wouter"
 import { Button } from "@/components/ui/button"
-import { ArrowRight, Mail, Phone, MapPin } from "lucide-react"
+import { ArrowRight, Mail, Phone, MapPin, Download } from "lucide-react"
+import { PWAInstallSection } from "@/components/pwa-install-button"
 
 const footerLinks = {
   Product: [
@@ -36,6 +37,7 @@ export function Footer() {
   return (
     <footer className="relative border-t border-border/50 bg-card/30 backdrop-blur-sm">
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        {/* CTA Banner */}
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary/20 via-primary/10 to-transparent border border-primary/20 p-8 sm:p-12">
           <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl" />
           <div className="relative flex flex-col lg:flex-row items-center justify-between gap-8">
@@ -64,6 +66,11 @@ export function Footer() {
               </Link>
             </div>
           </div>
+        </div>
+
+        {/* PWA Install Section */}
+        <div className="mt-8">
+          <PWAInstallSection />
         </div>
       </div>
 
