@@ -1,5 +1,6 @@
 export * from "./users";
 export * from "./leads";
+export * from "./contacts";
 export * from "./properties";
 export * from "./conversations";
 export * from "./messages";
