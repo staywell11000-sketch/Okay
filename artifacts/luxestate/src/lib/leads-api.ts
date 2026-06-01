@@ -99,15 +99,11 @@ export function useBulkImportLeads() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (leads: CreateLeadInput[]) => {
-      const results: Lead[] = [];
-      for (const lead of leads) {
-        const created = await apiFetch<Lead>("/leads", {
-          method: "POST",
-          body: JSON.stringify(lead),
-        });
-        results.push(created);
-      }
-      return results;
+      const { created } = await apiFetch<{ created: Lead[]; errors: string[] }>("/leads/bulk", {
+        method: "POST",
+        body: JSON.stringify({ leads }),
+      });
+      return created;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["leads"] });

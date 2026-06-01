@@ -222,7 +222,9 @@ function IntegrationCard({
             <div className="flex items-start gap-2 rounded-lg border border-sky-500/20 bg-sky-500/5 px-3 py-2">
               <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-400" />
               <p className="text-[11px] text-sky-400 leading-relaxed">
-                OAuth connected. Lead Ads syncing will begin once configured.
+                {integration?.platform === "tiktok"
+                  ? "OAuth connected. TikTok lead sync is coming soon."
+                  : "OAuth connected. Lead Ads syncing will begin once configured."}
               </p>
             </div>
           )}
@@ -450,7 +452,7 @@ export default function IntegrationsPage() {
 
   // ── Merge real + simulated integrations for display ───────────────────
   const realIntegrations = realAccounts
-    .filter((a) => META_PLATFORMS.has(a.provider as Platform))
+    .filter((a) => META_PLATFORMS.has(a.provider as Platform) || a.provider === "tiktok")
     .map(realAccountToIntegration)
 
   const allIntegrations: Integration[] = [...realIntegrations, ...simulatedIntegrations]

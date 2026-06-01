@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, leadsTable } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and, or, ilike } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
 import { fireTrigger } from "../services/automationEngine";
 import { createNotification } from "../services/notificationService";
@@ -33,14 +33,46 @@ function sanitize(row: typeof leadsTable.$inferSelect) {
 
 router.get("/leads", requireAuth, async (req: any, res) => {
   const userId: string = req.userId;
+  const pageSize = Math.min(1000, Math.max(1, Number(req.query.pageSize) || 500));
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const search = (req.query.search as string | undefined)?.trim();
+  const status = req.query.status as string | undefined;
+  const source = req.query.source as string | undefined;
+  const priority = req.query.priority as string | undefined;
+
   try {
+    const ownership = or(
+      eq(leadsTable.createdById, userId),
+      sql`${leadsTable.createdById} IS NULL`
+    );
+
+    const conditions = [ownership];
+    if (search) {
+      const pat = `%${search}%`;
+      conditions.push(
+        or(
+          ilike(leadsTable.name, pat),
+          ilike(leadsTable.email, pat),
+          ilike(leadsTable.phone, pat),
+          ilike(leadsTable.property, pat),
+        )!
+      );
+    }
+    if (status && status !== "all") conditions.push(eq(leadsTable.status, status));
+    if (source && source !== "all") conditions.push(eq(leadsTable.source, source));
+    if (priority && priority !== "all") conditions.push(eq(leadsTable.priority, priority));
+
     const rows = await db
       .select()
       .from(leadsTable)
-      .where(sql`(${leadsTable.createdById} = ${userId} OR ${leadsTable.createdById} IS NULL)`)
-      .orderBy(sql`${leadsTable.createdAt} DESC`);
+      .where(and(...conditions))
+      .orderBy(sql`${leadsTable.createdAt} DESC`)
+      .limit(pageSize)
+      .offset((page - 1) * pageSize);
+
     res.json(rows.map(sanitize));
-  } catch {
+  } catch (err) {
+    console.error("Leads fetch error:", err);
     res.status(500).json({ error: "Failed to fetch leads" });
   }
 });
@@ -56,6 +88,52 @@ router.get("/leads/:id", requireAuth, async (req: any, res) => {
     res.json(sanitize(row));
   } catch {
     res.status(500).json({ error: "Failed to fetch lead" });
+  }
+});
+
+router.post("/leads/bulk", requireAuth, async (req: any, res) => {
+  const { leads: inputLeads } = req.body as { leads: any[] };
+  const userId: string = req.userId;
+  if (!Array.isArray(inputLeads) || inputLeads.length === 0) {
+    return void res.status(400).json({ error: "leads array required" });
+  }
+  if (inputLeads.length > 500) {
+    return void res.status(400).json({ error: "Maximum 500 leads per bulk import" });
+  }
+  try {
+    const values = inputLeads.map((lead) => {
+      const { id: _id, createdAt: _c, updatedAt: _u, createdById: _cb, ...body } = lead;
+      return { ...body, createdById: userId };
+    });
+
+    const created = await db.insert(leadsTable).values(values).returning();
+    const sanitized = created.map(sanitize);
+
+    // Fire triggers asynchronously — don't block the response
+    Promise.allSettled(
+      created.map((row) => Promise.allSettled([
+        fireTrigger({
+          triggerType: "lead_created",
+          leadId: row.id,
+          lead: row,
+          userId: userId ?? undefined,
+          newStatus: row.status,
+        }),
+        createNotification({
+          userId,
+          type: "lead",
+          title: `Lead imported — ${row.name}`,
+          body: row.source ? `Source: ${row.source}` : "A new lead was bulk imported.",
+          actionUrl: `/dashboard/leads/${row.id}`,
+          metadata: { leadId: row.id },
+        }),
+      ]))
+    ).catch(() => {});
+
+    res.status(201).json({ created: sanitized, errors: [] });
+  } catch (err: any) {
+    console.error("Bulk import error:", err);
+    res.status(500).json({ error: "Bulk import failed", message: err?.message });
   }
 });
 

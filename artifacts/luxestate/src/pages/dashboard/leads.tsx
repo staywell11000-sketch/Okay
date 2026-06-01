@@ -1,3 +1,4 @@
+import { useMemo } from "react"
 import { motion } from "framer-motion"
 import { DashboardPageHeader } from "@/components/dashboard/page-header"
 import { LeadsTable } from "@/components/dashboard/leads-table"
@@ -28,7 +29,7 @@ export default function LeadsPage() {
   const bulkImport = useBulkImportLeads()
   const syncLeads = useSyncLeads()
 
-  const stats = [
+  const stats = useMemo(() => [
     {
       label: "Total Leads",
       value: leads.length,
@@ -66,7 +67,7 @@ export default function LeadsPage() {
       color: "text-indigo-500",
       bg: "bg-indigo-500/10",
     },
-  ]
+  ], [leads])
 
   const handleCreate = async (data: CreateLeadInput): Promise<Lead> => {
     try {

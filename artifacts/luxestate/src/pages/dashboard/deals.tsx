@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { DashboardPageHeader } from "@/components/dashboard/page-header"
 import { Button } from "@/components/ui/button"
@@ -517,11 +517,17 @@ export default function DealsPage() {
   const [showCreate, setShowCreate] = useState(false)
   const { data: deals = [], isLoading, error } = useDeals()
 
-  const filtered = stageFilter === "all" ? deals : deals.filter((d) => d.stage === stageFilter)
-  const totalValue = deals.reduce((s, d) => s + parseFloat(d.value ?? "0"), 0)
-  const wonValue = deals.filter((d) => d.stage === "won").reduce((s, d) => s + parseFloat(d.value ?? "0"), 0)
-  const activeCount = deals.filter((d) => d.status === "active").length
-  const avgValue = deals.length ? totalValue / deals.length : 0
+  const filtered = useMemo(
+    () => stageFilter === "all" ? deals : deals.filter((d) => d.stage === stageFilter),
+    [deals, stageFilter]
+  )
+  const { totalValue, wonValue, activeCount, avgValue } = useMemo(() => {
+    const totalValue = deals.reduce((s, d) => s + parseFloat(d.value ?? "0"), 0)
+    const wonValue = deals.filter((d) => d.stage === "won").reduce((s, d) => s + parseFloat(d.value ?? "0"), 0)
+    const activeCount = deals.filter((d) => d.status === "active").length
+    const avgValue = deals.length ? totalValue / deals.length : 0
+    return { totalValue, wonValue, activeCount, avgValue }
+  }, [deals])
 
   return (
     <div className="space-y-6">

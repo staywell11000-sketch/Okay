@@ -24,8 +24,13 @@ function sanitizeDeal(row: DealRow & { leadName?: string | null }) {
 
 router.get("/deals", requireAuth, async (req: any, res) => {
   const userId: string = req.userId;
+  const pageSize = Math.min(1000, Math.max(1, Number(req.query.pageSize) || 500));
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const stage = req.query.stage as string | undefined;
+
   try {
-    const { stage, status } = req.query as { stage?: string; status?: string };
+    const conditions = [eq(deals.createdById, userId)];
+    if (stage && stage !== "all") conditions.push(eq(deals.stage, stage as any));
 
     const rows = await db
       .select({
@@ -52,20 +57,12 @@ router.get("/deals", requireAuth, async (req: any, res) => {
       })
       .from(deals)
       .leftJoin(leadsTable, eq(deals.leadId, leadsTable.id))
-      .where(eq(deals.createdById, userId))
-      .orderBy(sql`${deals.createdAt} DESC`);
+      .where(and(...conditions))
+      .orderBy(sql`${deals.createdAt} DESC`)
+      .limit(pageSize)
+      .offset((page - 1) * pageSize);
 
-    let result = rows.map(sanitizeDeal);
-
-    if (stage && stage !== "all") {
-      result = result.filter((d) => d.stage === stage);
-    }
-
-    if (status) {
-      result = result.filter((d) => d.status === status);
-    }
-
-    res.json(result);
+    res.json(rows.map(sanitizeDeal));
   } catch (err) {
     console.error("Deals fetch error:", err);
     res.status(500).json({ error: "Failed to fetch deals" });
