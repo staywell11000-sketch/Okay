@@ -9,11 +9,16 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { surfaceInputClass } from "@/lib/ui-classes"
 import { useSettings, useUpdateSettings, useUploadImage, type SettingsUpdate } from "@/lib/settings-api"
+import { supabase } from "@/lib/supabase"
+import { useAuth } from "@/lib/auth-context"
 import { toast } from "sonner"
 import {
   User, Bell, Shield, Palette, MessageCircle, Building2,
-  Link2, Camera, Upload, Loader2,
-  Check, Lock, Clock, Mail, Phone, Save, RefreshCw, AlertCircle,
+  Link2, Camera, Loader2,
+  Check, Lock, Clock, Mail, Save, RefreshCw, AlertCircle,
+  Smartphone, KeyRound, LogOut, Trash2, Download, UserCog,
+  Eye, EyeOff, ShieldCheck, MonitorSmartphone, Copy, CheckCheck,
+  Globe, UserCircle2, CreditCard,
 } from "lucide-react"
 import { THEMES } from "@/lib/themes"
 
@@ -26,6 +31,7 @@ const TABS = [
   { id: "notifications",label: "Notifications",      icon: Bell },
   { id: "security",     label: "Security",           icon: Shield },
   { id: "accounts",     label: "Connected Accounts", icon: Link2 },
+  { id: "account",      label: "Account",            icon: UserCog },
 ]
 
 // ─── Toggle Switch ────────────────────────────────────────
@@ -152,12 +158,62 @@ function NotifRow({
   )
 }
 
+// ─── Password Input ───────────────────────────────────────
+
+function PasswordInput({
+  value, onChange, placeholder, show, onToggleShow,
+}: {
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  show: boolean
+  onToggleShow: () => void
+}) {
+  return (
+    <div className="relative">
+      <Input
+        type={show ? "text" : "password"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={cn(surfaceInputClass, "pr-10")}
+      />
+      <button
+        type="button"
+        onClick={onToggleShow}
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+      >
+        {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </button>
+    </div>
+  )
+}
+
+// ─── Detect browser + platform from user agent ────────────
+
+function parseUserAgent(ua: string): { browser: string; os: string } {
+  const browser =
+    /Edg\//.test(ua) ? "Edge" :
+    /OPR\//.test(ua) ? "Opera" :
+    /Chrome\//.test(ua) ? "Chrome" :
+    /Firefox\//.test(ua) ? "Firefox" :
+    /Safari\//.test(ua) ? "Safari" : "Unknown Browser"
+  const os =
+    /Windows/.test(ua) ? "Windows" :
+    /Mac OS X/.test(ua) ? "macOS" :
+    /Linux/.test(ua) ? "Linux" :
+    /Android/.test(ua) ? "Android" :
+    /iPhone|iPad/.test(ua) ? "iOS" : "Unknown OS"
+  return { browser, os }
+}
+
 // ─── Main Page ────────────────────────────────────────────
 
 export default function SettingsPage() {
   const { data, isLoading, isError, refetch } = useSettings()
   const updateSettings = useUpdateSettings()
   const { theme, setTheme } = useTheme()
+  const { session, signOut } = useAuth()
   const [activeTab, setActiveTab] = useState("profile")
 
   // ── URL param: OAuth redirect ─────────────────────────
@@ -188,14 +244,36 @@ export default function SettingsPage() {
     notificationsEnabled: true, newLeadNotif: true, dealStatusNotif: true,
     whatsappNotif: true, weeklyReportsEnabled: true, marketingEmailsEnabled: false,
   })
-  const [security, setSecurity] = useState({ securityTwoFactorEnabled: false })
   const [timeFormat, setTimeFormat] = useState<"12h" | "24h">("12h")
   const [savingNotif, setSavingNotif] = useState(false)
   const formInitialised = useRef(false)
 
+  // ── 2FA state ─────────────────────────────────────────
+  const [mfaFactors, setMfaFactors] = useState<any[]>([])
+  const [mfaLoading, setMfaLoading] = useState(false)
+  const [mfaEnrollData, setMfaEnrollData] = useState<{ id: string; qrCode: string; secret: string } | null>(null)
+  const [mfaCode, setMfaCode] = useState("")
+  const [mfaVerifying, setMfaVerifying] = useState(false)
+  const [mfaEnrolling, setMfaEnrolling] = useState(false)
+  const [mfaDisabling, setMfaDisabling] = useState(false)
+  const [secretCopied, setSecretCopied] = useState(false)
+
+  // ── Password state ────────────────────────────────────
+  const [pwForm, setPwForm] = useState({ newPassword: "", confirmPassword: "" })
+  const [pwLoading, setPwLoading] = useState(false)
+  const [showNewPw, setShowNewPw] = useState(false)
+  const [showConfirmPw, setShowConfirmPw] = useState(false)
+  const [pwStrength, setPwStrength] = useState(0)
+
+  // ── Sessions state ────────────────────────────────────
+  const [signingOutOthers, setSigningOutOthers] = useState(false)
+
+  // ── Account / danger zone ─────────────────────────────
+  const [deleteConfirmText, setDeleteConfirmText] = useState("")
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [exportLoading, setExportLoading] = useState(false)
+
   // Populate form fields from DB — runs once when data first arrives.
-  // Never calls setTheme() here: theme is already managed by next-themes
-  // (localStorage) and must not be overwritten on every settings mount.
   useEffect(() => {
     if (!settings || formInitialised.current) return
     formInitialised.current = true
@@ -225,9 +303,25 @@ export default function SettingsPage() {
       weeklyReportsEnabled:  settings.weekly_reports_enabled,
       marketingEmailsEnabled:settings.marketing_emails_enabled,
     })
-    setSecurity({ securityTwoFactorEnabled: settings.security_two_factor_enabled })
     setTimeFormat((settings.time_format as "12h" | "24h") ?? "12h")
   }, [settings, user])
+
+  // Load MFA factors when security tab is opened
+  useEffect(() => {
+    if (activeTab === "security") loadMfaFactors()
+  }, [activeTab])
+
+  // ── Password strength ─────────────────────────────────
+  useEffect(() => {
+    const p = pwForm.newPassword
+    let score = 0
+    if (p.length >= 8) score++
+    if (p.length >= 12) score++
+    if (/[A-Z]/.test(p)) score++
+    if (/[0-9]/.test(p)) score++
+    if (/[^a-zA-Z0-9]/.test(p)) score++
+    setPwStrength(score)
+  }, [pwForm.newPassword])
 
   // ── Save handlers ─────────────────────────────────────
 
@@ -290,19 +384,164 @@ export default function SettingsPage() {
     }
   }, [notifs, updateSettings])
 
-  const handleSecurityToggle = async (key: keyof typeof security, value: boolean) => {
-    const updated = { ...security, [key]: value }
-    setSecurity(updated)
+  // ── 2FA handlers ──────────────────────────────────────
+
+  const loadMfaFactors = async () => {
+    setMfaLoading(true)
+    const { data, error } = await supabase.auth.mfa.listFactors()
+    if (!error && data) setMfaFactors(data.totp ?? [])
+    setMfaLoading(false)
+  }
+
+  const startMfaEnrollment = async () => {
+    setMfaEnrolling(true)
+    const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp" })
+    if (error || !data) {
+      toast.error("Failed to start 2FA setup: " + (error?.message ?? "Unknown error"))
+      setMfaEnrolling(false)
+      return
+    }
+    setMfaEnrollData({
+      id: data.id,
+      qrCode: data.totp.qr_code,
+      secret: data.totp.secret,
+    })
+    setMfaCode("")
+    setMfaEnrolling(false)
+  }
+
+  const verifyMfaCode = async () => {
+    if (!mfaEnrollData || mfaCode.length < 6) return
+    setMfaVerifying(true)
+    const { data: challenge, error: challengeErr } = await supabase.auth.mfa.challenge({ factorId: mfaEnrollData.id })
+    if (challengeErr || !challenge) {
+      toast.error("Failed to create challenge")
+      setMfaVerifying(false)
+      return
+    }
+    const { error: verifyErr } = await supabase.auth.mfa.verify({
+      factorId: mfaEnrollData.id,
+      challengeId: challenge.id,
+      code: mfaCode,
+    })
+    if (verifyErr) {
+      toast.error("Invalid code — please try again")
+      setMfaVerifying(false)
+      return
+    }
+    toast.success("Two-factor authentication enabled!")
+    setMfaEnrollData(null)
+    setMfaCode("")
+    await loadMfaFactors()
+    setMfaVerifying(false)
+  }
+
+  const disableMfa = async (factorId: string) => {
+    setMfaDisabling(true)
+    const { error } = await supabase.auth.mfa.unenroll({ factorId })
+    if (error) {
+      toast.error("Failed to disable 2FA: " + error.message)
+      setMfaDisabling(false)
+      return
+    }
+    toast.success("Two-factor authentication disabled")
+    await loadMfaFactors()
+    setMfaDisabling(false)
+  }
+
+  const cancelMfaEnrollment = async () => {
+    if (mfaEnrollData) {
+      await supabase.auth.mfa.unenroll({ factorId: mfaEnrollData.id }).catch(() => {})
+    }
+    setMfaEnrollData(null)
+    setMfaCode("")
+  }
+
+  const copySecret = () => {
+    if (!mfaEnrollData) return
+    navigator.clipboard.writeText(mfaEnrollData.secret)
+    setSecretCopied(true)
+    setTimeout(() => setSecretCopied(false), 2000)
+  }
+
+  // ── Password handler ──────────────────────────────────
+
+  const changePassword = async () => {
+    if (pwForm.newPassword.length < 8) {
+      toast.error("Password must be at least 8 characters")
+      return
+    }
+    if (pwForm.newPassword !== pwForm.confirmPassword) {
+      toast.error("Passwords do not match")
+      return
+    }
+    setPwLoading(true)
+    const { error } = await supabase.auth.updateUser({ password: pwForm.newPassword })
+    if (error) {
+      toast.error(error.message)
+      setPwLoading(false)
+      return
+    }
+    toast.success("Password updated successfully")
+    setPwForm({ newPassword: "", confirmPassword: "" })
+    setPwLoading(false)
+  }
+
+  // ── Session handler ───────────────────────────────────
+
+  const signOutOtherSessions = async () => {
+    setSigningOutOthers(true)
+    const { error } = await supabase.auth.signOut({ scope: "others" })
+    if (error) toast.error("Failed to sign out other sessions")
+    else toast.success("Signed out of all other devices")
+    setSigningOutOthers(false)
+  }
+
+  // ── Data export handler ───────────────────────────────
+
+  const exportData = async () => {
+    setExportLoading(true)
     try {
-      await updateSettings.mutateAsync(updated as SettingsUpdate)
-      toast.success("Security settings updated")
-    } catch (err: any) {
-      setSecurity(security)
-      toast.error(err?.message ?? "Save failed")
+      const { data: { session: s } } = await supabase.auth.getSession()
+      const headers: Record<string, string> = s?.access_token
+        ? { Authorization: `Bearer ${s.access_token}` } : {}
+      const BASE = import.meta.env.BASE_URL.replace(/\/$/, "")
+      const [leadsRes, dealsRes, propertiesRes] = await Promise.all([
+        fetch(`${BASE}/api/leads`, { headers }),
+        fetch(`${BASE}/api/deals`, { headers }),
+        fetch(`${BASE}/api/properties`, { headers }),
+      ])
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        leads: leadsRes.ok ? await leadsRes.json() : [],
+        deals: dealsRes.ok ? await dealsRes.json() : [],
+        properties: propertiesRes.ok ? await propertiesRes.json() : [],
+      }
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `luxestate-export-${new Date().toISOString().slice(0, 10)}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success("Data exported successfully")
+    } catch {
+      toast.error("Export failed")
+    } finally {
+      setExportLoading(false)
     }
   }
 
+  // ── Derived ───────────────────────────────────────────
+
   const avatarInitials = `${profile.firstName?.[0] ?? ""}${profile.lastName?.[0] ?? ""}`.toUpperCase() || (user?.email?.[0] ?? "U").toUpperCase()
+  const activeMfaFactor = mfaFactors.find((f) => f.status === "verified")
+  const { browser, os } = parseUserAgent(navigator.userAgent)
+  const memberSince = session?.user?.created_at
+    ? new Date(session.user.created_at).toLocaleDateString("en-US", { month: "long", year: "numeric" })
+    : "—"
+  const pwStrengthLabel = ["", "Weak", "Fair", "Good", "Strong", "Very strong"][pwStrength] ?? ""
+  const pwStrengthColor = pwStrength <= 1 ? "bg-red-500" : pwStrength <= 2 ? "bg-amber-500" : pwStrength <= 3 ? "bg-yellow-400" : "bg-emerald-500"
 
   if (isLoading) {
     return (
@@ -373,6 +612,7 @@ export default function SettingsPage() {
             transition={{ duration: 0.18 }}
             className="flex-1 min-w-0 space-y-4"
           >
+
             {/* ─── Profile ──────────────────────────────── */}
             {activeTab === "profile" && (
               <Section title="Profile Information" subtitle="Update your personal details and contact info.">
@@ -471,7 +711,6 @@ export default function SettingsPage() {
             {/* ─── Appearance ───────────────────────────── */}
             {activeTab === "appearance" && (
               <Section title="Appearance" subtitle="Customize how your CRM looks and behaves.">
-                {/* Theme */}
                 <div>
                   <label className="text-sm font-medium text-foreground mb-3 block">Color Theme</label>
                   <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
@@ -509,7 +748,6 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                {/* Time format */}
                 <div>
                   <label className="text-sm font-medium text-foreground mb-3 block">Time Format</label>
                   <div className="flex gap-3">
@@ -590,78 +828,256 @@ export default function SettingsPage() {
             {/* ─── Security ────────────────────────────── */}
             {activeTab === "security" && (
               <div className="space-y-4">
-                <Section title="Security" subtitle="Protect your account and manage access.">
-                  <div className="space-y-3">
-                    {/* 2FA */}
-                    <div className="flex items-center justify-between gap-4 rounded-xl border border-border/50 bg-secondary/10 px-4 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
-                          <Lock className="h-4 w-4 text-primary" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">Two-Factor Authentication</p>
-                          <p className="text-xs text-muted-foreground">Add a second layer of security to your account</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        {security.securityTwoFactorEnabled && (
-                          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">
-                            <Check className="h-3 w-3 mr-1" /> Enabled
-                          </Badge>
-                        )}
-                        <Toggle
-                          checked={security.securityTwoFactorEnabled}
-                          onChange={(v) => handleSecurityToggle("securityTwoFactorEnabled", v)}
-                        />
-                      </div>
-                    </div>
 
-                    {/* Password */}
-                    <div className="flex items-center justify-between gap-4 rounded-xl border border-border/50 bg-secondary/10 px-4 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary/50">
-                          <Mail className="h-4 w-4 text-muted-foreground" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">Password</p>
-                          <p className="text-xs text-muted-foreground">Managed through your authentication provider</p>
-                        </div>
-                      </div>
-                      <Badge variant="outline" className="text-xs text-muted-foreground">Auth Provider</Badge>
+                {/* Two-Factor Authentication */}
+                <div className="glass-card p-6 space-y-5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
+                      <Smartphone className="h-4 w-4 text-primary" />
                     </div>
-
-                    {/* Sessions */}
-                    <div className="flex items-center justify-between gap-4 rounded-xl border border-border/50 bg-secondary/10 px-4 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary/50">
-                          <Phone className="h-4 w-4 text-muted-foreground" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">Active Sessions</p>
-                          <p className="text-xs text-muted-foreground">Manage devices where you are signed in</p>
-                        </div>
-                      </div>
-                      <Badge variant="outline" className="text-xs text-muted-foreground">Coming soon</Badge>
-                    </div>
-                  </div>
-                </Section>
-
-                {/* Danger zone */}
-                <div className="glass-card p-6 space-y-4 border-red-500/20">
-                  <div>
-                    <h3 className="text-base font-semibold text-red-500">Danger Zone</h3>
-                    <p className="text-sm text-muted-foreground mt-0.5">Irreversible actions — proceed with caution</p>
-                  </div>
-                  <div className="flex items-center justify-between gap-4 rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-4">
                     <div>
-                      <p className="text-sm font-medium text-foreground">Delete Account</p>
-                      <p className="text-xs text-muted-foreground">Permanently delete your account and all data</p>
+                      <h3 className="text-base font-semibold text-foreground">Two-Factor Authentication</h3>
+                      <p className="text-sm text-muted-foreground">Use an authenticator app for a second layer of security</p>
                     </div>
-                    <Button variant="outline" size="sm" disabled className="border-red-500/30 text-red-500 hover:bg-red-500/10 opacity-50 cursor-not-allowed">
-                      Delete Account
+                    {mfaLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground ml-auto" />}
+                    {!mfaLoading && activeMfaFactor && (
+                      <Badge className="ml-auto bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs font-medium">
+                        <ShieldCheck className="h-3 w-3 mr-1" /> Enabled
+                      </Badge>
+                    )}
+                    {!mfaLoading && !activeMfaFactor && (
+                      <Badge variant="outline" className="ml-auto text-xs text-muted-foreground">Not enabled</Badge>
+                    )}
+                  </div>
+
+                  {/* Enrollment flow */}
+                  <AnimatePresence>
+                    {mfaEnrollData ? (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="rounded-xl border border-primary/20 bg-primary/5 p-5 space-y-5">
+                          <div>
+                            <p className="text-sm font-semibold text-foreground mb-1">Step 1 — Scan with your authenticator app</p>
+                            <p className="text-xs text-muted-foreground">Open Google Authenticator, Authy, or any TOTP app and scan the QR code below.</p>
+                          </div>
+
+                          {/* QR Code */}
+                          <div className="flex flex-col sm:flex-row gap-5 items-start">
+                            <div className="flex-shrink-0 rounded-xl border-2 border-border bg-white p-2 shadow-sm">
+                              <div
+                                className="h-40 w-40"
+                                dangerouslySetInnerHTML={{ __html: mfaEnrollData.qrCode }}
+                              />
+                            </div>
+                            <div className="space-y-3 flex-1">
+                              <div>
+                                <p className="text-xs font-medium text-muted-foreground mb-1.5">Can't scan? Enter this key manually:</p>
+                                <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2">
+                                  <code className="text-xs font-mono text-foreground flex-1 break-all select-all">
+                                    {mfaEnrollData.secret}
+                                  </code>
+                                  <button onClick={copySecret} className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors">
+                                    {secretCopied ? <CheckCheck className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                                  </button>
+                                </div>
+                              </div>
+                              <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+                                <p className="text-xs text-amber-700 dark:text-amber-400">
+                                  Save this key somewhere safe. It lets you recover access if you lose your authenticator app.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Verify */}
+                          <div>
+                            <p className="text-sm font-semibold text-foreground mb-2">Step 2 — Enter the 6-digit code from your app</p>
+                            <div className="flex gap-3">
+                              <Input
+                                value={mfaCode}
+                                onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                                placeholder="000000"
+                                maxLength={6}
+                                className={cn(surfaceInputClass, "font-mono text-center text-lg tracking-widest w-40")}
+                                onKeyDown={(e) => e.key === "Enter" && verifyMfaCode()}
+                              />
+                              <Button
+                                onClick={verifyMfaCode}
+                                disabled={mfaCode.length < 6 || mfaVerifying}
+                                className="bg-primary hover:bg-primary/90 gap-2"
+                              >
+                                {mfaVerifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                                Verify & Enable
+                              </Button>
+                              <Button variant="outline" onClick={cancelMfaEnrollment}>Cancel</Button>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ) : (
+                      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                        {activeMfaFactor ? (
+                          <div className="flex items-center gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3.5">
+                            <ShieldCheck className="h-5 w-5 text-emerald-500 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-foreground">Your account is protected with 2FA</p>
+                              <p className="text-xs text-muted-foreground">Authenticator app is linked and active</p>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => disableMfa(activeMfaFactor.id)}
+                              disabled={mfaDisabling}
+                              className="flex-shrink-0 border-red-500/30 text-red-500 hover:bg-red-500/10 hover:border-red-500/50"
+                            >
+                              {mfaDisabling ? <Loader2 className="h-3 w-3 animate-spin" /> : "Disable"}
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            onClick={startMfaEnrollment}
+                            disabled={mfaEnrolling}
+                            className="bg-primary hover:bg-primary/90 gap-2"
+                          >
+                            {mfaEnrolling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Smartphone className="h-4 w-4" />}
+                            Set Up Authenticator App
+                          </Button>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {/* Change Password */}
+                <div className="glass-card p-6 space-y-5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary/50">
+                      <KeyRound className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-semibold text-foreground">Change Password</h3>
+                      <p className="text-sm text-muted-foreground">Update your account password anytime</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <FieldRow label="New Password">
+                      <PasswordInput
+                        value={pwForm.newPassword}
+                        onChange={(v) => setPwForm((f) => ({ ...f, newPassword: v }))}
+                        placeholder="Minimum 8 characters"
+                        show={showNewPw}
+                        onToggleShow={() => setShowNewPw((s) => !s)}
+                      />
+                      {pwForm.newPassword.length > 0 && (
+                        <div className="space-y-1 mt-1.5">
+                          <div className="flex gap-1">
+                            {[1, 2, 3, 4, 5].map((i) => (
+                              <div
+                                key={i}
+                                className={cn(
+                                  "h-1 flex-1 rounded-full transition-all duration-300",
+                                  i <= pwStrength ? pwStrengthColor : "bg-border"
+                                )}
+                              />
+                            ))}
+                          </div>
+                          <p className="text-xs text-muted-foreground">{pwStrengthLabel}</p>
+                        </div>
+                      )}
+                    </FieldRow>
+
+                    <FieldRow label="Confirm New Password">
+                      <PasswordInput
+                        value={pwForm.confirmPassword}
+                        onChange={(v) => setPwForm((f) => ({ ...f, confirmPassword: v }))}
+                        placeholder="Re-enter new password"
+                        show={showConfirmPw}
+                        onToggleShow={() => setShowConfirmPw((s) => !s)}
+                      />
+                      {pwForm.confirmPassword.length > 0 && pwForm.newPassword !== pwForm.confirmPassword && (
+                        <p className="text-xs text-red-500 mt-1">Passwords do not match</p>
+                      )}
+                      {pwForm.confirmPassword.length > 0 && pwForm.newPassword === pwForm.confirmPassword && (
+                        <p className="text-xs text-emerald-500 mt-1 flex items-center gap-1">
+                          <Check className="h-3 w-3" /> Passwords match
+                        </p>
+                      )}
+                    </FieldRow>
+
+                    <Button
+                      onClick={changePassword}
+                      disabled={pwLoading || !pwForm.newPassword || !pwForm.confirmPassword}
+                      className="bg-primary hover:bg-primary/90 gap-2"
+                    >
+                      {pwLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+                      Update Password
                     </Button>
                   </div>
                 </div>
+
+                {/* Active Sessions */}
+                <div className="glass-card p-6 space-y-5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary/50">
+                      <MonitorSmartphone className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-semibold text-foreground">Active Sessions</h3>
+                      <p className="text-sm text-muted-foreground">Devices currently signed into your account</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    {/* Current session */}
+                    <div className="flex items-center gap-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-4">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 flex-shrink-0">
+                        <Globe className="h-5 w-5 text-emerald-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-foreground">{browser} on {os}</p>
+                          <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-[10px]">
+                            Current
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Signed in · Expires {session?.expires_at
+                            ? new Date(session.expires_at * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                            : "—"
+                          }
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Sign out other devices */}
+                    <div className="flex items-center justify-between gap-4 rounded-xl border border-border/50 bg-secondary/10 px-4 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary/50">
+                          <LogOut className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Sign out everywhere else</p>
+                          <p className="text-xs text-muted-foreground">Revoke access from all other devices and browsers</p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={signOutOtherSessions}
+                        disabled={signingOutOthers}
+                        className="flex-shrink-0"
+                      >
+                        {signingOutOthers ? <Loader2 className="h-3 w-3 animate-spin" /> : "Sign Out Others"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             )}
 
@@ -672,6 +1088,181 @@ export default function SettingsPage() {
                 errorMessage={oauthError}
               />
             )}
+
+            {/* ─── Account ──────────────────────────────── */}
+            {activeTab === "account" && (
+              <div className="space-y-4">
+
+                {/* Account Overview */}
+                <div className="glass-card p-6 space-y-5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
+                      <UserCircle2 className="h-4 w-4 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-semibold text-foreground">Account Overview</h3>
+                      <p className="text-sm text-muted-foreground">Your account details and membership info</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {[
+                      { label: "Email Address", value: session?.user?.email ?? "—", mono: false },
+                      { label: "Member Since",  value: memberSince, mono: false },
+                      { label: "Account ID",    value: session?.user?.id ? `${session.user.id.slice(0, 8)}…` : "—", mono: true },
+                      { label: "Auth Provider", value: session?.user?.app_metadata?.provider === "email" ? "Email & Password" : (session?.user?.app_metadata?.provider ?? "Email"), mono: false },
+                    ].map(({ label, value, mono }) => (
+                      <div key={label} className="rounded-xl border border-border/50 bg-secondary/10 px-4 py-3.5">
+                        <p className="text-xs text-muted-foreground mb-1">{label}</p>
+                        <p className={cn("text-sm font-medium text-foreground", mono && "font-mono")}>{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Plan */}
+                <div className="glass-card p-6 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary/50">
+                      <CreditCard className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-base font-semibold text-foreground">Plan & Billing</h3>
+                      <p className="text-sm text-muted-foreground">Your current subscription plan</p>
+                    </div>
+                    <Badge className="bg-primary/10 text-primary border-primary/20">Free Plan</Badge>
+                  </div>
+
+                  <div className="rounded-xl border border-border/50 bg-secondary/10 px-4 py-4 flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">LuxeState CRM — Free</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Unlimited leads, deals, and basic analytics</p>
+                    </div>
+                    <Button variant="outline" size="sm" disabled className="opacity-50 cursor-not-allowed">
+                      Upgrade
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Data Export */}
+                <div className="glass-card p-6 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary/50">
+                      <Download className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-semibold text-foreground">Export Your Data</h3>
+                      <p className="text-sm text-muted-foreground">Download all your leads, deals, and properties as JSON</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4 rounded-xl border border-border/50 bg-secondary/10 px-4 py-4">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Full data export</p>
+                      <p className="text-xs text-muted-foreground">Leads, deals, and properties in JSON format</p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={exportData}
+                      disabled={exportLoading}
+                      className="flex-shrink-0 gap-1.5"
+                    >
+                      {exportLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                      Export
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Danger Zone */}
+                <div className="glass-card p-6 space-y-4 border border-red-500/20">
+                  <div>
+                    <h3 className="text-base font-semibold text-red-500">Danger Zone</h3>
+                    <p className="text-sm text-muted-foreground mt-0.5">Irreversible actions — proceed with extreme caution</p>
+                  </div>
+
+                  {/* Sign out everywhere */}
+                  <div className="flex items-center justify-between gap-4 rounded-xl border border-red-500/10 bg-red-500/5 px-4 py-4">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Sign out of all devices</p>
+                      <p className="text-xs text-muted-foreground">End all active sessions, including this one</p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => signOut()}
+                      className="flex-shrink-0 border-red-500/30 text-red-500 hover:bg-red-500/10 hover:border-red-500/50"
+                    >
+                      <LogOut className="h-3.5 w-3.5 mr-1.5" />
+                      Sign Out All
+                    </Button>
+                  </div>
+
+                  {/* Delete account */}
+                  <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Delete Account</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Permanently delete your account, all data, leads, and integrations. This cannot be undone.</p>
+                      </div>
+                      {!showDeleteConfirm && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowDeleteConfirm(true)}
+                          className="flex-shrink-0 border-red-500/30 text-red-500 hover:bg-red-500/10 hover:border-red-500/50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                          Delete Account
+                        </Button>
+                      )}
+                    </div>
+
+                    <AnimatePresence>
+                      {showDeleteConfirm && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="space-y-3 pt-1">
+                            <p className="text-xs font-medium text-red-500">
+                              Type <span className="font-mono font-bold">DELETE</span> to confirm
+                            </p>
+                            <Input
+                              value={deleteConfirmText}
+                              onChange={(e) => setDeleteConfirmText(e.target.value)}
+                              placeholder="Type DELETE to confirm"
+                              className={cn(surfaceInputClass, "border-red-500/30 focus:border-red-500/60")}
+                            />
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                disabled={deleteConfirmText !== "DELETE"}
+                                className="bg-red-500 hover:bg-red-600 text-white gap-1.5 disabled:opacity-40"
+                                onClick={() => toast.error("Account deletion requires contacting support. Please email support@luxestate.app")}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                Permanently Delete
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText("") }}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </div>
+              </div>
+            )}
+
           </motion.div>
         </AnimatePresence>
       </div>
