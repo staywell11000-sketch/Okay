@@ -2,6 +2,8 @@ import { Router } from "express"
 import crypto from "crypto"
 import { requireAuth } from "../middlewares/requireAuth"
 import { supabaseAdmin } from "../lib/supabase"
+import { db, connectedAccounts } from "@workspace/db"
+import { eq, and } from "drizzle-orm"
 import { logger } from "../lib/logger"
 
 const router = Router()
@@ -54,8 +56,6 @@ router.post("/whatsapp/webhook", async (req: any, res) => {
       return res.status(401).send("Invalid signature")
     }
   } else {
-    // In production, reject unauthenticated webhook requests when secret is missing
-    // Allow only in explicit development mode
     if (process.env.NODE_ENV !== "development") {
       logger.error("FACEBOOK_APP_SECRET not set — rejecting webhook request in non-dev environment")
       return res.status(401).send("Webhook not configured")
@@ -102,19 +102,21 @@ router.post("/whatsapp/webhook", async (req: any, res) => {
           const content      = (msg.text?.body as string) ?? ""
           const phoneNumId   = value.metadata?.phone_number_id as string | undefined
 
-          // Find the connected account owner by phone_number_id in metadata
+          // Find the connected account owner by phone_number_id — uses Drizzle (Replit PG)
           let ownerUserId: string | null = null
           if (phoneNumId) {
-            const { data: accounts } = await supabaseAdmin
-              .from("connected_accounts")
-              .select("user_id, metadata")
-              .eq("provider", "whatsapp")
-              .eq("status", "active")
+            const accounts = await db
+              .select({ userId: connectedAccounts.userId, metadata: connectedAccounts.metadata })
+              .from(connectedAccounts)
+              .where(and(
+                eq(connectedAccounts.provider, "whatsapp"),
+                eq(connectedAccounts.status, "active"),
+              ))
 
-            for (const acct of accounts ?? []) {
+            for (const acct of accounts) {
               const meta = acct.metadata as Record<string, string> | null
               if (meta?.phone_number_id === phoneNumId) {
-                ownerUserId = acct.user_id
+                ownerUserId = acct.userId
                 break
               }
             }
@@ -125,7 +127,7 @@ router.post("/whatsapp/webhook", async (req: any, res) => {
             continue
           }
 
-          // Find or create contact by phone number
+          // Find or create contact by phone number — uses Supabase
           let contactId: string
 
           const { data: existingContact } = await supabaseAdmin
@@ -141,10 +143,11 @@ router.post("/whatsapp/webhook", async (req: any, res) => {
             const displayName = value.contacts?.[0]?.profile?.name ?? senderPhone
             const initials = displayName
               .split(" ")
-              .map((n: string) => n[0])
+              .filter(Boolean)
+              .map((n: string) => n[0] ?? "")
               .join("")
               .toUpperCase()
-              .slice(0, 2)
+              .slice(0, 2) || "??"
 
             const { data: newContact, error: ce } = await supabaseAdmin
               .from("contacts")
@@ -164,7 +167,7 @@ router.post("/whatsapp/webhook", async (req: any, res) => {
             contactId = newContact.id
           }
 
-          // Find or create conversation (channel = 'whatsapp')
+          // Find or create conversation (channel = 'whatsapp') — uses Supabase
           let conversationId: string
 
           const { data: existingConv } = await supabaseAdmin
@@ -236,7 +239,6 @@ router.post("/whatsapp/webhook", async (req: any, res) => {
             })
             .eq("id", conversationId)
 
-          // Increment unread_count separately
           await supabaseAdmin.rpc("increment_unread_count", { conv_id: conversationId })
         }
       }
@@ -276,22 +278,25 @@ router.post("/whatsapp/send", requireAuth, async (req: any, res) => {
       return res.status(400).json({ error: "Contact has no phone number" })
     }
 
-    // Get WhatsApp connected account for this user
-    const { data: account, error: ae } = await supabaseAdmin
-      .from("connected_accounts")
-      .select("access_token, metadata")
-      .eq("user_id", req.userId)
-      .eq("provider", "whatsapp")
-      .eq("status", "active")
-      .single()
+    // Get WhatsApp connected account from Replit PG (Drizzle)
+    const accounts = await db
+      .select({ accessToken: connectedAccounts.accessToken, metadata: connectedAccounts.metadata })
+      .from(connectedAccounts)
+      .where(and(
+        eq(connectedAccounts.userId, req.userId),
+        eq(connectedAccounts.provider, "whatsapp"),
+        eq(connectedAccounts.status, "active"),
+      ))
+      .limit(1)
 
-    if (ae || !account) {
+    const account = accounts[0]
+    if (!account) {
       return res.status(400).json({ error: "No active WhatsApp account connected" })
     }
 
-    const meta         = (account as any).metadata as Record<string, string> | null
+    const meta         = account.metadata as Record<string, string> | null
     const phoneNumId   = meta?.phone_number_id
-    const accessToken  = (account as any).access_token as string
+    const accessToken  = account.accessToken as string
 
     if (!phoneNumId) {
       return res.status(400).json({ error: "Phone number ID not found — reconnect your WhatsApp account" })
@@ -358,5 +363,53 @@ router.post("/whatsapp/send", requireAuth, async (req: any, res) => {
     return res.status(500).json({ error: err?.message ?? "Internal server error" })
   }
 })
+
+// ─── GET /api/whatsapp/status ─────────────────────────────
+// Returns WhatsApp connection status for the authenticated user
+
+router.get("/whatsapp/status", requireAuth, async (req: any, res) => {
+  try {
+    const accounts = await db
+      .select({
+        id:           connectedAccounts.id,
+        status:       connectedAccounts.status,
+        accountName:  connectedAccounts.accountName,
+        metadata:     connectedAccounts.metadata,
+        lastSyncedAt: connectedAccounts.lastSyncedAt,
+      })
+      .from(connectedAccounts)
+      .where(and(
+        eq(connectedAccounts.userId, req.userId),
+        eq(connectedAccounts.provider, "whatsapp"),
+      ))
+      .limit(1)
+
+    const account = accounts[0]
+    if (!account) {
+      return res.json({ connected: false })
+    }
+
+    const meta = account.metadata as Record<string, string> | null
+    return res.json({
+      connected:      true,
+      status:         account.status,
+      accountName:    account.accountName,
+      phoneNumberId:  meta?.phone_number_id ?? null,
+      wabaId:         meta?.waba_id ?? null,
+      lastSyncedAt:   account.lastSyncedAt,
+      webhookUrl:     `${getApiBaseUrl()}/api/whatsapp/webhook`,
+      verifyToken:    process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN ? "configured" : "not_configured",
+    })
+  } catch (err: any) {
+    logger.error({ err }, "Error in /whatsapp/status")
+    return res.status(500).json({ error: err?.message ?? "Internal server error" })
+  }
+})
+
+function getApiBaseUrl(): string {
+  if (process.env.API_URL) return process.env.API_URL
+  if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`
+  return "http://localhost:8080"
+}
 
 export default router
