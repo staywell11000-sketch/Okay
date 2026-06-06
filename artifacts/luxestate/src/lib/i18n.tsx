@@ -194,7 +194,7 @@ const en: Translations = {
   "calculator.totalPrice": "Total Price",
   "calculator.pricePerSqft": "Price per Sqft",
   "calculator.area": "Area (sqft)",
-  "calculator.loanAmount": "Loan Amount (₨)",
+  "calculator.loanAmount": "Loan Amount ($)",
   "calculator.interestRate": "Annual Interest Rate (%)",
   "calculator.loanTerm": "Loan Term (Years)",
   "calculator.monthlyPayment": "Monthly Payment",

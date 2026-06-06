@@ -847,16 +847,13 @@ export default function SettingsPage() {
                     onChange={(v) => handleNotifToggle("dealStatusNotif", v)}
                     saving={savingNotif}
                   />
-                  <div className="flex items-center justify-between gap-4 rounded-xl border border-border/50 bg-secondary/10 px-4 py-3.5">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-foreground">WhatsApp Messages</p>
-                        <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-600">Coming Soon</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">WhatsApp messaging notifications will be available once integration is live</p>
-                    </div>
-                    <Toggle checked={false} onChange={() => {}} disabled={true} />
-                  </div>
+                  <NotifRow
+                    label="WhatsApp Messages"
+                    description="Get notified when a lead replies via WhatsApp"
+                    checked={notifs.weeklyReportsEnabled}
+                    onChange={(v) => handleNotifToggle("weeklyReportsEnabled", v)}
+                    saving={savingNotif}
+                  />
                   <NotifRow
                     label="Weekly Performance Report"
                     description="A weekly summary of your leads, deals, and activities"

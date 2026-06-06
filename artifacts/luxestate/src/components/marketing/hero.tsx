@@ -6,7 +6,7 @@ import { PWAInstallButton } from "@/components/pwa-install-button"
 
 const stats = [
   { value: "50K+", label: "Active Users", icon: Users },
-  { value: "₨ 780 Cr", label: "Properties Sold", icon: Building2 },
+  { value: "$2.4B+", label: "Properties Sold", icon: Building2 },
   { value: "98%", label: "Client Retention", icon: TrendingUp },
 ]
 

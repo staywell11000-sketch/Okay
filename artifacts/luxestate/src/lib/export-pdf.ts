@@ -1,10 +1,10 @@
 import type { AnalyticsData } from "./analytics-api";
 
 function formatCurrency(v: number): string {
-  if (v >= 10_000_000) return `Rs ${(v / 10_000_000).toFixed(2)} Cr`;
-  if (v >= 100_000) return `Rs ${(v / 100_000).toFixed(2)} L`;
-  if (v >= 1_000) return `Rs ${(v / 1_000).toFixed(1)}K`;
-  return `Rs ${Math.round(v).toLocaleString("en-PK")}`;
+  if (v >= 1_000_000_000) return `$${(v / 1_000_000_000).toFixed(2)}B`;
+  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
+  if (v >= 1_000) return `$${(v / 1_000).toFixed(1)}K`;
+  return `$${Math.round(v).toLocaleString("en-US")}`;
 }
 
 export async function exportAnalyticsPDF(data: AnalyticsData): Promise<void> {

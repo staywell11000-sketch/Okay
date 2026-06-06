@@ -38,10 +38,10 @@ const stageConfig: Record<DealStage, { label: string; color: string; bg: string;
 function fmt(value: string | null | undefined): string {
   const n = parseFloat(value ?? "0")
   if (isNaN(n) || n === 0) return "—"
-  if (n >= 10_000_000) return `₨ ${(n / 10_000_000).toFixed(2)} Cr`
-  if (n >= 100_000) return `₨ ${(n / 100_000).toFixed(2)} L`
-  if (n >= 1_000) return `₨ ${(n / 1_000).toFixed(0)}K`
-  return `₨ ${Math.round(n).toLocaleString("en-PK")}`
+  if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(2)}B`
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`
+  return `$${Math.round(n).toLocaleString("en-US")}`
 }
 
 function fmtDate(iso: string | null | undefined): string {
