@@ -44,7 +44,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         ${firstName || null},
         ${lastName},
         'agent',
-        false,
+        true,
         NOW(),
         NOW()
       )
@@ -52,6 +52,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         email      = EXCLUDED.email,
         first_name = COALESCE(EXCLUDED.first_name, users.first_name),
         last_name  = COALESCE(EXCLUDED.last_name,  users.last_name),
+        onboarded  = true,
         updated_at = NOW()
     `);
   } catch (err) {

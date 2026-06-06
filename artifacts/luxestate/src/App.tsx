@@ -36,7 +36,6 @@ import MarketingPage from "@/pages/marketing"
 import SignInPage from "@/pages/auth/sign-in"
 import SignUpPage from "@/pages/auth/sign-up"
 import ForgotPasswordPage from "@/pages/auth/forgot-password"
-import OnboardingPage from "@/pages/auth/onboarding"
 import { DashboardLayout } from "@/pages/dashboard/layout"
 import OverviewPage from "@/pages/dashboard/overview"
 import LeadsPage from "@/pages/dashboard/leads"
@@ -79,17 +78,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-function OnboardingGuard({ children }: { children: React.ReactNode }) {
-  const { session } = useAuth()
-  const { data: profile, isLoading } = useCurrentUser(session?.user?.id)
-  if (isLoading) return <LoadingScreen />
-  // Only redirect if the profile record exists but onboarding was not completed.
-  // New users are redirected to /onboarding by the sign-up page directly.
-  // We never redirect on API errors to avoid bouncing existing users on transient failures.
-  if (profile && !profile.onboarded) return <Redirect to="/onboarding" />
-  return <>{children}</>
-}
-
 function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth()
   if (loading) return <LoadingScreen />
@@ -107,27 +95,25 @@ function HomeRedirect() {
 function DashboardRoutes() {
   return (
     <ProtectedRoute>
-      <OnboardingGuard>
-        <DashboardLayout>
-          <Switch>
-            <Route path="/dashboard" component={OverviewPage} />
-            <Route path="/dashboard/leads" component={LeadsPage} />
-            <Route path="/dashboard/properties" component={PropertiesPage} />
-            <Route path="/dashboard/messages" component={MessagesPage} />
-            <Route path="/dashboard/analytics" component={AnalyticsPage} />
-            <Route path="/dashboard/ai-intelligence" component={AIIntelligencePage} />
-            <Route path="/dashboard/automations" component={AutomationsPage} />
-            <Route path="/dashboard/team" component={TeamPage} />
-            <Route path="/dashboard/deals" component={DealsPage} />
-            <Route path="/dashboard/documents" component={DocumentsPage} />
-            <Route path="/dashboard/calendar" component={CalendarPage} />
-            <Route path="/dashboard/calculator" component={CalculatorPage} />
-            <Route path="/dashboard/settings" component={SettingsPage} />
-            <Route path="/dashboard/integrations" component={IntegrationsPage} />
-            <Route component={NotFound} />
-          </Switch>
-        </DashboardLayout>
-      </OnboardingGuard>
+      <DashboardLayout>
+        <Switch>
+          <Route path="/dashboard" component={OverviewPage} />
+          <Route path="/dashboard/leads" component={LeadsPage} />
+          <Route path="/dashboard/properties" component={PropertiesPage} />
+          <Route path="/dashboard/messages" component={MessagesPage} />
+          <Route path="/dashboard/analytics" component={AnalyticsPage} />
+          <Route path="/dashboard/ai-intelligence" component={AIIntelligencePage} />
+          <Route path="/dashboard/automations" component={AutomationsPage} />
+          <Route path="/dashboard/team" component={TeamPage} />
+          <Route path="/dashboard/deals" component={DealsPage} />
+          <Route path="/dashboard/documents" component={DocumentsPage} />
+          <Route path="/dashboard/calendar" component={CalendarPage} />
+          <Route path="/dashboard/calculator" component={CalculatorPage} />
+          <Route path="/dashboard/settings" component={SettingsPage} />
+          <Route path="/dashboard/integrations" component={IntegrationsPage} />
+          <Route component={NotFound} />
+        </Switch>
+      </DashboardLayout>
     </ProtectedRoute>
   )
 }
@@ -135,11 +121,9 @@ function DashboardRoutes() {
 function LeadProfileRoute({ params }: { params: { id: string } }) {
   return (
     <ProtectedRoute>
-      <OnboardingGuard>
-        <DashboardLayout>
-          <LeadProfilePage params={params} />
-        </DashboardLayout>
-      </OnboardingGuard>
+      <DashboardLayout>
+        <LeadProfilePage params={params} />
+      </DashboardLayout>
     </ProtectedRoute>
   )
 }
@@ -156,7 +140,7 @@ function Router() {
       </Route>
       <Route path="/forgot-password" component={ForgotPasswordPage} />
       <Route path="/onboarding">
-        <ProtectedRoute><OnboardingPage /></ProtectedRoute>
+        <ProtectedRoute><Redirect to="/dashboard" /></ProtectedRoute>
       </Route>
       <Route path="/dashboard/leads/:id" component={LeadProfileRoute} />
       <Route path="/dashboard" component={DashboardRoutes} />

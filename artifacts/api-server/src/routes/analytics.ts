@@ -16,7 +16,7 @@ router.get("/analytics/overview", requireAuth, async (req, res) => {
         COUNT(*) FILTER (WHERE status = 'won')::text AS won,
         COUNT(*) FILTER (WHERE status = 'new')::text AS new_count
       FROM leads
-      WHERE (created_by_id = ${userId} OR created_by_id IS NULL)
+      WHERE created_by_id = ${userId}
     `);
     const leadStats = leadResult.rows[0];
     const totalLeads = parseInt(leadStats?.total ?? "0", 10);
@@ -27,7 +27,7 @@ router.get("/analytics/overview", requireAuth, async (req, res) => {
     const sourceResult = await db.execute<{ source: string; count: string }>(sql`
       SELECT COALESCE(source, 'Unknown') AS source, COUNT(*)::text AS count
       FROM leads
-      WHERE (created_by_id = ${userId} OR created_by_id IS NULL)
+      WHERE created_by_id = ${userId}
       GROUP BY source
       ORDER BY count DESC
     `);
@@ -42,7 +42,7 @@ router.get("/analytics/overview", requireAuth, async (req, res) => {
         COUNT(*) FILTER (WHERE status = 'won')::text AS won,
         ROUND(AVG(score))::text AS avg_score
       FROM leads
-      WHERE (created_by_id = ${userId} OR created_by_id IS NULL)
+      WHERE created_by_id = ${userId}
         AND assigned_to IS NOT NULL AND assigned_to != ''
       GROUP BY assigned_to
       ORDER BY won DESC, leads DESC
@@ -53,7 +53,7 @@ router.get("/analytics/overview", requireAuth, async (req, res) => {
     const dealResult = await db.execute<{ stage: string; count: string; total_value: string }>(sql`
       SELECT stage, COUNT(*)::text AS count, COALESCE(SUM(value), 0)::text AS total_value
       FROM deals
-      WHERE (created_by_id = ${userId} OR created_by_id IS NULL)
+      WHERE created_by_id = ${userId}
       GROUP BY stage
       ORDER BY count DESC
     `);
@@ -69,7 +69,7 @@ router.get("/analytics/overview", requireAuth, async (req, res) => {
         COALESCE(SUM(value), 0)::text AS total_pipeline,
         COALESCE(SUM(value) FILTER (WHERE stage = 'won'), 0)::text AS won_value
       FROM deals
-      WHERE (created_by_id = ${userId} OR created_by_id IS NULL)
+      WHERE created_by_id = ${userId}
     `);
     const dealTotals = dealTotalsResult.rows[0];
 
@@ -79,7 +79,7 @@ router.get("/analytics/overview", requireAuth, async (req, res) => {
         COUNT(*)::text AS total,
         COUNT(*) FILTER (WHERE status = 'active')::text AS active
       FROM properties
-      WHERE (listed_by_id = ${userId} OR listed_by_id IS NULL)
+      WHERE listed_by_id = ${userId}
     `);
     const propTotals = propResult.rows[0];
 
@@ -108,7 +108,7 @@ router.get("/analytics/overview", requireAuth, async (req, res) => {
       SELECT id::text, name, COALESCE(source, 'Unknown') AS source, status,
              created_at::text, COALESCE(score, 0)::text AS score
       FROM leads
-      WHERE (created_by_id = ${userId} OR created_by_id IS NULL)
+      WHERE created_by_id = ${userId}
       ORDER BY created_at DESC
       LIMIT 5
     `);
@@ -123,7 +123,7 @@ router.get("/analytics/overview", requireAuth, async (req, res) => {
              COALESCE(l2.name, '') AS lead_name
       FROM deals d
       LEFT JOIN leads l2 ON d.lead_id = l2.id
-      WHERE (d.created_by_id = ${userId} OR d.created_by_id IS NULL)
+      WHERE d.created_by_id = ${userId}
       ORDER BY d.updated_at DESC
       LIMIT 5
     `);
@@ -157,14 +157,14 @@ router.get("/analytics/overview", requireAuth, async (req, res) => {
         SELECT DATE_TRUNC('day', created_at)::date AS day, COUNT(*)::int AS cnt
         FROM leads
         WHERE created_at >= NOW() - INTERVAL '7 days'
-          AND (created_by_id = ${userId} OR created_by_id IS NULL)
+          AND created_by_id = ${userId}
         GROUP BY 1
       ),
       deal_counts AS (
         SELECT DATE_TRUNC('day', created_at)::date AS day, COUNT(*)::int AS cnt
         FROM deals
         WHERE created_at >= NOW() - INTERVAL '7 days'
-          AND (created_by_id = ${userId} OR created_by_id IS NULL)
+          AND created_by_id = ${userId}
         GROUP BY 1
       )
       SELECT
@@ -195,7 +195,7 @@ router.get("/analytics/overview", requireAuth, async (req, res) => {
         COUNT(*) FILTER (WHERE status = 'won')::text AS won
       FROM leads
       WHERE created_at >= NOW() - INTERVAL '6 months'
-        AND (created_by_id = ${userId} OR created_by_id IS NULL)
+        AND created_by_id = ${userId}
       GROUP BY DATE_TRUNC('month', created_at)
       ORDER BY DATE_TRUNC('month', created_at) ASC
     `);
@@ -203,12 +203,12 @@ router.get("/analytics/overview", requireAuth, async (req, res) => {
     // --- Status & priority breakdown ---
     const statusResult = await db.execute<{ status: string; count: string }>(sql`
       SELECT status, COUNT(*)::text AS count FROM leads
-      WHERE (created_by_id = ${userId} OR created_by_id IS NULL)
+      WHERE created_by_id = ${userId}
       GROUP BY status ORDER BY count DESC
     `);
     const priorityResult = await db.execute<{ priority: string; count: string }>(sql`
       SELECT priority, COUNT(*)::text AS count FROM leads
-      WHERE (created_by_id = ${userId} OR created_by_id IS NULL)
+      WHERE created_by_id = ${userId}
       GROUP BY priority ORDER BY count DESC
     `);
 

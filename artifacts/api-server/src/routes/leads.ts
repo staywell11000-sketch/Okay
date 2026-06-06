@@ -41,12 +41,7 @@ router.get("/leads", requireAuth, async (req: any, res) => {
   const priority = req.query.priority as string | undefined;
 
   try {
-    const ownership = or(
-      eq(leadsTable.createdById, userId),
-      sql`${leadsTable.createdById} IS NULL`
-    );
-
-    const conditions = [ownership];
+    const conditions = [eq(leadsTable.createdById, userId)];
     if (search) {
       const pat = `%${search}%`;
       conditions.push(
@@ -83,7 +78,7 @@ router.get("/leads/:id", requireAuth, async (req: any, res) => {
   const userId: string = req.userId;
   try {
     const [row] = await db.select().from(leadsTable)
-      .where(sql`${leadsTable.id} = ${id} AND (${leadsTable.createdById} = ${userId} OR ${leadsTable.createdById} IS NULL)`);
+      .where(sql`${leadsTable.id} = ${id} AND ${leadsTable.createdById} = ${userId}`);
     if (!row) return void res.status(404).json({ error: "Lead not found" });
     res.json(sanitize(row));
   } catch {
@@ -116,7 +111,7 @@ router.post("/leads/bulk", requireAuth, async (req: any, res) => {
         .where(
           and(
             inArray(leadsTable.email, emails),
-            or(eq(leadsTable.createdById, userId), sql`${leadsTable.createdById} IS NULL`)
+            eq(leadsTable.createdById, userId)
           )
         );
       existing.forEach((r) => { if (r.email) existingEmails.add(r.email.toLowerCase()); });
@@ -177,7 +172,7 @@ router.post("/leads/bulk-delete", requireAuth, async (req: any, res) => {
   try {
     await db.delete(leadsTable).where(
       sql`${leadsTable.id} = ANY(ARRAY[${sql.join(ids.map((id) => sql`${id}`), sql`, `)}]::int[])
-          AND (${leadsTable.createdById} = ${userId} OR ${leadsTable.createdById} IS NULL)`
+          AND ${leadsTable.createdById} = ${userId}`
     );
     res.status(204).send();
   } catch {
@@ -222,12 +217,12 @@ router.put("/leads/:id", requireAuth, async (req: any, res) => {
   if (isNaN(id)) return void res.status(400).json({ error: "Invalid ID" });
   try {
     const [previousLead] = await db.select().from(leadsTable)
-      .where(sql`${leadsTable.id} = ${id} AND (${leadsTable.createdById} = ${userId} OR ${leadsTable.createdById} IS NULL)`);
+      .where(sql`${leadsTable.id} = ${id} AND ${leadsTable.createdById} = ${userId}`);
     const { id: _id, createdAt: _c, updatedAt: _u, createdById: _cb, ...body } = req.body;
     const [row] = await db
       .update(leadsTable)
       .set({ ...body, updatedAt: new Date() })
-      .where(sql`${leadsTable.id} = ${id} AND (${leadsTable.createdById} = ${userId} OR ${leadsTable.createdById} IS NULL)`)
+      .where(sql`${leadsTable.id} = ${id} AND ${leadsTable.createdById} = ${userId}`)
       .returning();
     if (!row) return void res.status(404).json({ error: "Lead not found" });
     res.json(sanitize(row));
@@ -263,12 +258,12 @@ router.patch("/leads/:id", requireAuth, async (req: any, res) => {
   if (isNaN(id)) return void res.status(400).json({ error: "Invalid ID" });
   try {
     const [previousLead] = await db.select().from(leadsTable)
-      .where(sql`${leadsTable.id} = ${id} AND (${leadsTable.createdById} = ${userId} OR ${leadsTable.createdById} IS NULL)`);
+      .where(sql`${leadsTable.id} = ${id} AND ${leadsTable.createdById} = ${userId}`);
     const { id: _id, createdAt: _c, updatedAt: _u, createdById: _cb, ...body } = req.body;
     const [row] = await db
       .update(leadsTable)
       .set({ ...body, updatedAt: new Date() })
-      .where(sql`${leadsTable.id} = ${id} AND (${leadsTable.createdById} = ${userId} OR ${leadsTable.createdById} IS NULL)`)
+      .where(sql`${leadsTable.id} = ${id} AND ${leadsTable.createdById} = ${userId}`)
       .returning();
     if (!row) return void res.status(404).json({ error: "Lead not found" });
     res.json(sanitize(row));
@@ -302,7 +297,7 @@ router.delete("/leads/:id", requireAuth, async (req: any, res) => {
   if (isNaN(id)) return void res.status(400).json({ error: "Invalid ID" });
   try {
     await db.delete(leadsTable).where(
-      sql`${leadsTable.id} = ${id} AND (${leadsTable.createdById} = ${userId} OR ${leadsTable.createdById} IS NULL)`
+      sql`${leadsTable.id} = ${id} AND ${leadsTable.createdById} = ${userId}`
     );
     res.status(204).send();
   } catch {

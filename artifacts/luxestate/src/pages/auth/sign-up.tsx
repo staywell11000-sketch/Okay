@@ -35,7 +35,7 @@ export default function SignUpPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}${base}/onboarding`,
+        redirectTo: `${window.location.origin}${base}/dashboard`,
       },
     })
     if (error) {
@@ -62,7 +62,7 @@ export default function SignUpPage() {
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/onboarding`,
+        emailRedirectTo: `${window.location.origin}/sign-in`,
       },
     })
 
@@ -72,9 +72,8 @@ export default function SignUpPage() {
       return
     }
 
-    // If session exists immediately → email confirmation is OFF, go straight to onboarding
+    // If session exists immediately → email confirmation is OFF, let auth context redirect
     if (data.session) {
-      setLocation("/onboarding")
       return
     }
 
