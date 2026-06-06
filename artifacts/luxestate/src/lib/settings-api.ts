@@ -60,6 +60,7 @@ export type SettingsUpdate = {
   weeklyReportsEnabled?: boolean
   marketingEmailsEnabled?: boolean
   securityTwoFactorEnabled?: boolean
+  preferredLanguage?: string
 }
 
 function useAuthHeaders() {

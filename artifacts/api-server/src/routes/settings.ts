@@ -46,6 +46,7 @@ router.put("/settings", requireAuth, async (req: any, res) => {
     theme, timeFormat,
     notificationsEnabled, newLeadNotif, dealStatusNotif, whatsappNotif,
     weeklyReportsEnabled, marketingEmailsEnabled, securityTwoFactorEnabled,
+    preferredLanguage,
   } = req.body;
 
   try {
@@ -66,6 +67,7 @@ router.put("/settings", requireAuth, async (req: any, res) => {
         theme, time_format,
         notifications_enabled, new_lead_notif, deal_status_notif, whatsapp_notif,
         weekly_reports_enabled, marketing_emails_enabled, security_two_factor_enabled,
+        preferred_language,
         created_at, updated_at
       ) VALUES (
         ${userId},
@@ -84,6 +86,7 @@ router.put("/settings", requireAuth, async (req: any, res) => {
         ${weeklyReportsEnabled       ?? true},
         ${marketingEmailsEnabled     ?? false},
         ${securityTwoFactorEnabled   ?? false},
+        ${preferredLanguage          ?? "en"},
         NOW(), NOW()
       )
       ON CONFLICT (user_id) DO UPDATE SET
@@ -102,6 +105,7 @@ router.put("/settings", requireAuth, async (req: any, res) => {
         weekly_reports_enabled     = EXCLUDED.weekly_reports_enabled,
         marketing_emails_enabled   = EXCLUDED.marketing_emails_enabled,
         security_two_factor_enabled = EXCLUDED.security_two_factor_enabled,
+        preferred_language         = EXCLUDED.preferred_language,
         updated_at                 = NOW()
     `);
 

@@ -31,6 +31,7 @@ export const userSettings = pgTable(
     weeklyReportsEnabled: boolean("weekly_reports_enabled").notNull().default(true),
     marketingEmailsEnabled: boolean("marketing_emails_enabled").notNull().default(false),
     securityTwoFactorEnabled: boolean("security_two_factor_enabled").notNull().default(false),
+    preferredLanguage: varchar("preferred_language", { length: 10 }).default("en"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

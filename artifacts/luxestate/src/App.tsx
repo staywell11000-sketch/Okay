@@ -52,6 +52,8 @@ import DocumentsPage from "@/pages/dashboard/documents"
 import CalendarPage from "@/pages/dashboard/calendar"
 import SettingsPage from "@/pages/dashboard/settings"
 import IntegrationsPage from "@/pages/dashboard/integrations"
+import CalculatorPage from "@/pages/dashboard/calculator"
+import { LanguageProvider } from "@/lib/i18n"
 
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "")
@@ -119,6 +121,7 @@ function DashboardRoutes() {
             <Route path="/dashboard/deals" component={DealsPage} />
             <Route path="/dashboard/documents" component={DocumentsPage} />
             <Route path="/dashboard/calendar" component={CalendarPage} />
+            <Route path="/dashboard/calculator" component={CalculatorPage} />
             <Route path="/dashboard/settings" component={SettingsPage} />
             <Route path="/dashboard/integrations" component={IntegrationsPage} />
             <Route component={NotFound} />
@@ -175,12 +178,14 @@ function App() {
             themes={["gold", "midnight", "ocean", "emerald", "rose", "slate", "violet"]}
           >
             <TooltipProvider>
-              <AuthProvider>
-                <ErrorBoundary>
-                  <Router />
-                </ErrorBoundary>
-                <Toaster />
-              </AuthProvider>
+              <LanguageProvider>
+                <AuthProvider>
+                  <ErrorBoundary>
+                    <Router />
+                  </ErrorBoundary>
+                  <Toaster />
+                </AuthProvider>
+              </LanguageProvider>
             </TooltipProvider>
           </ThemeProvider>
         </QueryClientProvider>

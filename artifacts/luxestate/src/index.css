@@ -495,3 +495,22 @@
   background: inherit;
   animation: pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
+
+/* ── RTL language font support ──────────────────────────────────────────────── */
+html[lang="ur"],
+html[lang="ps"],
+html[lang="sd"] {
+  font-family: 'Noto Nastaliq Urdu', 'Noto Naskh Arabic', 'Segoe UI', system-ui, sans-serif;
+  line-height: 2;
+}
+
+html[lang="ur"] *,
+html[lang="ps"] *,
+html[lang="sd"] * {
+  letter-spacing: 0;
+}
+
+/* Flip lucide chevrons in RTL */
+html[dir="rtl"] .sidebar-chevron {
+  transform: scaleX(-1);
+}

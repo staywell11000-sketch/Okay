@@ -18,6 +18,7 @@ import {
   CalendarDays,
   Cable,
   LogOut,
+  Calculator,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -25,21 +26,23 @@ import { useAuth } from "@/lib/auth-context"
 import { useCurrentUser } from "@/lib/user-api"
 import { useSettings } from "@/lib/settings-api"
 import { useLocation as useWouterLocation } from "wouter"
+import { useLanguage, type TranslationKey } from "@/lib/i18n"
 
-const navItems = [
-  { href: "/dashboard",                label: "Overview",        icon: LayoutDashboard },
-  { href: "/dashboard/leads",          label: "Leads",           icon: Users },
-  { href: "/dashboard/integrations",   label: "Lead Sources",    icon: Cable },
-  { href: "/dashboard/properties",     label: "Properties",      icon: Building2 },
-  { href: "/dashboard/messages",       label: "Messages",        icon: MessageSquare },
-  { href: "/dashboard/analytics",      label: "Analytics",       icon: BarChart3 },
-  { href: "/dashboard/ai-intelligence",label: "AI Intelligence", icon: Brain },
-  { href: "/dashboard/automations",    label: "Automations",     icon: Zap },
-  { href: "/dashboard/team",           label: "Team",            icon: Users2 },
-  { href: "/dashboard/deals",          label: "Deals",           icon: ClipboardList },
-  { href: "/dashboard/documents",      label: "Documents",       icon: FolderOpen },
-  { href: "/dashboard/calendar",       label: "Calendar",        icon: CalendarDays },
-  { href: "/dashboard/settings",       label: "Settings",        icon: Settings },
+const navItems: { href: string; key: TranslationKey; icon: React.ElementType }[] = [
+  { href: "/dashboard",                 key: "nav.overview",        icon: LayoutDashboard },
+  { href: "/dashboard/leads",           key: "nav.leads",           icon: Users },
+  { href: "/dashboard/integrations",    key: "nav.leadSources",     icon: Cable },
+  { href: "/dashboard/properties",      key: "nav.properties",      icon: Building2 },
+  { href: "/dashboard/messages",        key: "nav.messages",        icon: MessageSquare },
+  { href: "/dashboard/analytics",       key: "nav.analytics",       icon: BarChart3 },
+  { href: "/dashboard/ai-intelligence", key: "nav.aiIntelligence",  icon: Brain },
+  { href: "/dashboard/automations",     key: "nav.automations",     icon: Zap },
+  { href: "/dashboard/team",            key: "nav.team",            icon: Users2 },
+  { href: "/dashboard/deals",           key: "nav.deals",           icon: ClipboardList },
+  { href: "/dashboard/documents",       key: "nav.documents",       icon: FolderOpen },
+  { href: "/dashboard/calculator",      key: "nav.calculator",      icon: Calculator },
+  { href: "/dashboard/calendar",        key: "nav.calendar",        icon: CalendarDays },
+  { href: "/dashboard/settings",        key: "nav.settings",        icon: Settings },
 ]
 
 type SidebarProps = {
@@ -53,6 +56,7 @@ type SidebarProps = {
 export function Sidebar({ collapsed, setCollapsed, notifOpen, onToggleNotif, unreadCount }: SidebarProps) {
   const [location] = useLocation()
   const { data: settingsData } = useSettings()
+  const { t } = useLanguage()
   const businessName = settingsData?.settings?.business_name || "My CRM"
   const businessLogoUrl = settingsData?.settings?.business_logo_url
   const brandInitial = businessName.trim()[0]?.toUpperCase() ?? "C"
@@ -163,7 +167,7 @@ export function Sidebar({ collapsed, setCollapsed, notifOpen, onToggleNotif, unr
                       transition={{ duration: 0.15 }}
                       className="relative z-10 overflow-hidden whitespace-nowrap text-sm font-medium"
                     >
-                      {item.label}
+                      {t(item.key)}
                     </motion.span>
                   )}
                 </AnimatePresence>
