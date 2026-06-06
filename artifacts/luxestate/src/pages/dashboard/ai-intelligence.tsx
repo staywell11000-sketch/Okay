@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Link } from "wouter"
 import { DashboardPageHeader } from "@/components/dashboard/page-header"
@@ -25,6 +25,9 @@ import {
   Activity,
   ChevronRight,
   Minus,
+  Send,
+  Bot,
+  User,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer, Tooltip } from "recharts"
@@ -32,6 +35,10 @@ import { useLeads } from "@/lib/leads-api"
 import { useSalesInsights, useAnalyzeAll, useAnalyzeLead, type AnalyzeAllEvent } from "@/lib/ai-api"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
+
+const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api"
+
+type ChatMessage = { role: "user" | "assistant"; content: string }
 
 const priorityColor: Record<string, string> = {
   critical: "bg-red-500 text-white",
@@ -73,6 +80,47 @@ export default function AIIntelligencePage() {
   const [progress, setProgress] = useState<AnalyzeProgress | null>(null)
   const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null)
   const [analyzingLeadId, setAnalyzingLeadId] = useState<number | null>(null)
+
+  // Chat state
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    { role: "assistant", content: "Hi! I have full context of your CRM — leads, scores, pipeline, and deals. Ask me anything about your sales performance or what to prioritize." }
+  ])
+  const [chatInput, setChatInput] = useState("")
+  const [chatLoading, setChatLoading] = useState(false)
+  const chatEndRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [chatMessages])
+
+  const sendChat = useCallback(async (e?: React.FormEvent) => {
+    e?.preventDefault()
+    const content = chatInput.trim()
+    if (!content || chatLoading) return
+    const userMsg: ChatMessage = { role: "user", content }
+    const nextMessages = [...chatMessages, userMsg]
+    setChatMessages(nextMessages)
+    setChatInput("")
+    setChatLoading(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token ?? ""
+      const res = await fetch(`${API_BASE}/ai/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ messages: nextMessages }),
+      })
+      if (!res.ok) throw new Error("Chat failed")
+      const { reply } = await res.json()
+      setChatMessages((prev) => [...prev, { role: "assistant", content: reply }])
+    } catch {
+      toast.error("Failed to get AI response")
+      setChatMessages((prev) => prev.slice(0, -1))
+      setChatInput(content)
+    } finally {
+      setChatLoading(false)
+    }
+  }, [chatInput, chatLoading, chatMessages])
 
   const hotLeads = leads
     .filter((l) => (l.urgencyScore ?? 0) >= 60)
@@ -621,6 +669,126 @@ export default function AIIntelligencePage() {
           </div>
         </div>
       )}
+
+      {/* ── AI Chat ─────────────────────────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+        className="glass-card overflow-hidden"
+      >
+        {/* Header */}
+        <div className="flex items-center gap-3 border-b border-border/50 px-5 py-4">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
+            <Sparkles className="h-4 w-4 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-semibold text-foreground">AI Assistant</h3>
+            <p className="text-xs text-muted-foreground">Knows your leads, scores, pipeline &amp; deals in real time</p>
+          </div>
+          <Badge className="gap-1 bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs flex-shrink-0">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block" />
+            Live CRM context
+          </Badge>
+        </div>
+
+        {/* Message area */}
+        <div className="flex flex-col gap-3 overflow-y-auto px-5 py-4" style={{ maxHeight: "22rem" }}>
+          {chatMessages.map((msg, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+              className={cn("flex gap-2.5 max-w-[88%]", msg.role === "user" ? "self-end flex-row-reverse" : "self-start")}
+            >
+              <div className={cn(
+                "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full",
+                msg.role === "user"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-muted-foreground"
+              )}>
+                {msg.role === "user"
+                  ? <User className="h-3.5 w-3.5" />
+                  : <Bot className="h-3.5 w-3.5" />
+                }
+              </div>
+              <div className={cn(
+                "rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
+                msg.role === "user"
+                  ? "bg-primary text-primary-foreground rounded-tr-sm"
+                  : "bg-secondary/60 text-foreground rounded-tl-sm border border-border/40"
+              )}>
+                {msg.content}
+              </div>
+            </motion.div>
+          ))}
+
+          {chatLoading && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex gap-2.5 self-start"
+            >
+              <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-secondary text-muted-foreground">
+                <Bot className="h-3.5 w-3.5" />
+              </div>
+              <div className="flex items-center gap-1.5 rounded-2xl rounded-tl-sm border border-border/40 bg-secondary/60 px-4 py-3">
+                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "120ms" }} />
+                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "240ms" }} />
+              </div>
+            </motion.div>
+          )}
+          <div ref={chatEndRef} />
+        </div>
+
+        {/* Quick prompts */}
+        {chatMessages.length === 1 && (
+          <div className="flex flex-wrap gap-2 border-t border-border/30 px-5 pb-3 pt-3">
+            {[
+              "Which leads need follow-up today?",
+              "What's my pipeline health?",
+              "Who are my hottest leads?",
+              "How can I improve my conversion rate?",
+            ].map((prompt) => (
+              <button
+                key={prompt}
+                onClick={() => { setChatInput(prompt); setTimeout(() => sendChat(), 50) }}
+                className="rounded-full border border-border/50 bg-secondary/40 px-3 py-1 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Input */}
+        <form
+          onSubmit={sendChat}
+          className="flex items-center gap-2 border-t border-border/50 px-4 py-3"
+        >
+          <input
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat() } }}
+            placeholder="Ask about your leads, pipeline, or sales strategy..."
+            className="flex-1 rounded-xl border border-border/50 bg-secondary/30 px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-shadow"
+            disabled={chatLoading}
+          />
+          <Button
+            type="submit"
+            size="icon"
+            className="h-10 w-10 rounded-xl bg-primary hover:bg-primary/90 flex-shrink-0"
+            disabled={chatLoading || !chatInput.trim()}
+          >
+            {chatLoading
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <Send className="h-4 w-4" />
+            }
+          </Button>
+        </form>
+      </motion.div>
     </div>
   )
 }

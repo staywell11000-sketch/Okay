@@ -14,3 +14,4 @@ export * from "./team_members";
 export * from "./documents";
 export * from "./appointments";
 export * from "./user_settings";
+export * from "./ai_usage_logs";

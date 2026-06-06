@@ -1,11 +1,31 @@
 import { Router, type IRouter } from "express";
-import { db, leadsTable, activities, deals, messages, conversations } from "@workspace/db";
-import { eq, desc, inArray, and, or, isNull } from "drizzle-orm";
+import { db, leadsTable, activities, deals, messages, conversations, aiUsageLogs } from "@workspace/db";
+import { eq, desc, inArray, and, or, isNull, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
 import { openai } from "../lib/openai";
 import { fireTrigger } from "../services/automationEngine";
 
 const router: IRouter = Router();
+
+const PRICE_INPUT_PER_TOKEN = 0.00000015;
+const PRICE_OUTPUT_PER_TOKEN = 0.0000006;
+
+async function logUsage(
+  userId: string,
+  operation: string,
+  usage: { prompt_tokens: number; completion_tokens: number } | undefined | null
+) {
+  if (!usage) return;
+  try {
+    await db.insert(aiUsageLogs).values({
+      userId,
+      operation,
+      model: "gpt-4o-mini",
+      inputTokens: usage.prompt_tokens,
+      outputTokens: usage.completion_tokens,
+    });
+  } catch {}
+}
 
 type LeadAnalysis = {
   score: number;
@@ -21,7 +41,7 @@ async function analyzeLeadWithAI(leadData: {
   recentMessages: string[];
   recentActivities: string[];
   dealInfo: string | null;
-}): Promise<LeadAnalysis> {
+}): Promise<{ analysis: LeadAnalysis; usage: any }> {
   const { lead, recentMessages, recentActivities, dealInfo } = leadData;
 
   const prompt = `You are an AI assistant for a luxury real estate CRM. Analyze this lead and return a JSON object.
@@ -49,9 +69,9 @@ ${dealInfo || "No active deal"}
 
 Return ONLY a valid JSON object with these exact fields:
 {
-  "score": <integer 0-100, lead quality score based on budget fit, engagement, intent>,
-  "urgencyScore": <integer 0-100, how urgently this lead needs follow-up>,
-  "aiSummary": <2-3 sentence summary of lead status, key signals, and recommended approach>,
+  "score": <integer 0-100>,
+  "urgencyScore": <integer 0-100>,
+  "aiSummary": <2-3 sentence summary>,
   "suggestedActions": <array of 3-4 specific action strings>,
   "signals": [
     {"label": "Budget fit", "score": <0-100>},
@@ -60,7 +80,7 @@ Return ONLY a valid JSON object with these exact fields:
     {"label": "Intent", "score": <0-100>},
     {"label": "Readiness", "score": <0-100>}
   ],
-  "smartReminder": <one sentence time-sensitive reminder or next best action>
+  "smartReminder": <one sentence reminder>
 }`;
 
   const response = await openai.chat.completions.create({
@@ -72,10 +92,9 @@ Return ONLY a valid JSON object with these exact fields:
 
   const content = response.choices[0]?.message?.content ?? "{}";
   const parsed = JSON.parse(content) as LeadAnalysis;
-  return parsed;
+  return { analysis: parsed, usage: response.usage };
 }
 
-// Ownership predicate reused across routes
 const ownsLead = (userId: string) =>
   or(eq(leadsTable.createdById, userId), isNull(leadsTable.createdById));
 
@@ -85,7 +104,6 @@ router.post("/ai/analyze-lead/:id", requireAuth, async (req, res) => {
   if (isNaN(id)) return void res.status(400).json({ error: "Invalid ID" });
 
   try {
-    // Scope lead fetch to the authenticated user
     const [lead] = await db
       .select()
       .from(leadsTable)
@@ -106,7 +124,6 @@ router.post("/ai/analyze-lead/:id", requireAuth, async (req, res) => {
       .orderBy(desc(deals.createdAt))
       .limit(1);
 
-    // Scope conversations to this specific lead
     const leadConversations = await db
       .select()
       .from(conversations)
@@ -122,21 +139,19 @@ router.post("/ai/analyze-lead/:id", requireAuth, async (req, res) => {
         .where(inArray(messages.conversationId, convIds))
         .orderBy(desc(messages.createdAt))
         .limit(5);
-      // Use `direction` field (outbound/inbound), not the non-existent `senderType`
       recentMessages = msgs.map((m) => `[${(m.direction ?? "unknown").toUpperCase()}]: ${m.content}`);
     }
 
     const recentActivities = leadActivities.map(
       (a) => `${a.type}: ${a.title}${a.outcome ? ` → ${a.outcome}` : ""}`
     );
-
     const dealInfo = leadDeals[0]
       ? `Stage: ${leadDeals[0].stage}, Value: $${leadDeals[0].value ?? "TBD"}, Probability: ${leadDeals[0].probability ?? 0}%`
       : null;
 
-    const analysis = await analyzeLeadWithAI({ lead, recentMessages, recentActivities, dealInfo });
+    const { analysis, usage } = await analyzeLeadWithAI({ lead, recentMessages, recentActivities, dealInfo });
+    await logUsage(userId, "analyze-lead", usage);
 
-    // Scope update to the owner as well
     const [updated] = await db
       .update(leadsTable)
       .set({
@@ -151,7 +166,6 @@ router.post("/ai/analyze-lead/:id", requireAuth, async (req, res) => {
 
     res.json({ ...analysis, lead: updated });
 
-    // Fire automation triggers asynchronously after responding
     if (updated) {
       fireTrigger({
         triggerType: "lead_score_updated",
@@ -176,7 +190,6 @@ router.post("/ai/analyze-all", requireAuth, async (req, res) => {
   res.setHeader("Connection", "keep-alive");
 
   try {
-    // Only analyze leads belonging to the authenticated user
     const allLeads = await db
       .select()
       .from(leadsTable)
@@ -209,14 +222,11 @@ router.post("/ai/analyze-all", requireAuth, async (req, res) => {
           ? `Stage: ${leadDeals[0].stage}, Value: $${leadDeals[0].value ?? "TBD"}`
           : null;
 
-        const analysis = await analyzeLeadWithAI({
-          lead,
-          recentMessages: [],
-          recentActivities,
-          dealInfo,
+        const { analysis, usage } = await analyzeLeadWithAI({
+          lead, recentMessages: [], recentActivities, dealInfo,
         });
+        await logUsage(userId, "analyze-all", usage);
 
-        // Scope update to owner
         await db
           .update(leadsTable)
           .set({
@@ -228,23 +238,19 @@ router.post("/ai/analyze-all", requireAuth, async (req, res) => {
           })
           .where(and(eq(leadsTable.id, lead.id), ownsLead(userId)));
 
-        res.write(
-          `data: ${JSON.stringify({
-            type: "progress",
-            index: i + 1,
-            total: allLeads.length,
-            leadId: lead.id,
-            leadName: lead.name,
-            score: analysis.score,
-            urgencyScore: analysis.urgencyScore,
-          })}\n\n`
-        );
+        res.write(`data: ${JSON.stringify({
+          type: "progress",
+          index: i + 1,
+          total: allLeads.length,
+          leadId: lead.id,
+          leadName: lead.name,
+          score: analysis.score,
+          urgencyScore: analysis.urgencyScore,
+        })}\n\n`);
 
         await new Promise((r) => setTimeout(r, 200));
-      } catch (err) {
-        res.write(
-          `data: ${JSON.stringify({ type: "error", leadId: lead.id, leadName: lead.name })}\n\n`
-        );
+      } catch {
+        res.write(`data: ${JSON.stringify({ type: "error", leadId: lead.id, leadName: lead.name })}\n\n`);
       }
     }
 
@@ -260,7 +266,6 @@ router.post("/ai/analyze-all", requireAuth, async (req, res) => {
 router.post("/ai/sales-insights", requireAuth, async (req, res) => {
   const userId = (req as any).userId as string;
   try {
-    // Scope all queries to the authenticated user's data
     const allLeads = await db
       .select()
       .from(leadsTable)
@@ -287,10 +292,9 @@ router.post("/ai/sales-insights", requireAuth, async (req, res) => {
       return acc;
     }, {});
 
-    const avgScore =
-      allLeads.length > 0
-        ? Math.round(allLeads.reduce((s, l) => s + (l.score ?? 50), 0) / allLeads.length)
-        : 0;
+    const avgScore = allLeads.length > 0
+      ? Math.round(allLeads.reduce((s, l) => s + (l.score ?? 50), 0) / allLeads.length)
+      : 0;
 
     const hotLeads = allLeads.filter((l) => (l.urgencyScore ?? 0) >= 70).length;
     const totalDealValue = allDeals.reduce((s, d) => s + parseFloat(d.value ?? "0"), 0);
@@ -312,15 +316,15 @@ Pipeline Summary:
 
 Return ONLY a valid JSON object:
 {
-  "pipelineScore": <integer 0-100, overall pipeline health>,
-  "revenueForecasted": <string like "$2.4M" estimated from active deals>,
+  "pipelineScore": <integer 0-100>,
+  "revenueForecasted": <string like "$2.4M">,
   "hotLeadsCount": ${hotLeads},
-  "inactivityAlerts": [<array of up to 3 short alert strings about leads needing attention>],
-  "topInsights": [<array of 4 key insight strings about the pipeline>],
-  "weeklyTrend": <"up" | "down" | "stable">,
-  "weeklyTrendPercent": <number like 12>,
-  "conversionRate": <estimated percentage as number>,
-  "avgDealDays": <estimated average days to close as number>
+  "inactivityAlerts": [<up to 3 alert strings>],
+  "topInsights": [<4 insight strings>],
+  "weeklyTrend": <"up"|"down"|"stable">,
+  "weeklyTrendPercent": <number>,
+  "conversionRate": <number>,
+  "avgDealDays": <number>
 }`;
 
     const response = await openai.chat.completions.create({
@@ -330,17 +334,12 @@ Return ONLY a valid JSON object:
       response_format: { type: "json_object" },
     });
 
+    await logUsage(userId, "sales-insights", response.usage);
+
     const content = response.choices[0]?.message?.content ?? "{}";
     const insights = JSON.parse(content);
 
-    res.json({
-      ...insights,
-      totalLeads: allLeads.length,
-      avgScore,
-      hotLeadsCount: hotLeads,
-      totalDealValue,
-      statusCounts,
-    });
+    res.json({ ...insights, totalLeads: allLeads.length, avgScore, hotLeadsCount: hotLeads, totalDealValue, statusCounts });
   } catch (err) {
     console.error("Sales insights error:", err);
     res.status(500).json({ error: "Failed to generate insights" });
@@ -353,7 +352,6 @@ router.post("/ai/conversation-summary/:leadId", requireAuth, async (req, res) =>
   if (isNaN(leadId)) return void res.status(400).json({ error: "Invalid lead ID" });
 
   try {
-    // Scope lead fetch to the authenticated user
     const [lead] = await db
       .select()
       .from(leadsTable)
@@ -367,28 +365,24 @@ router.post("/ai/conversation-summary/:leadId", requireAuth, async (req, res) =>
       .orderBy(desc(activities.createdAt))
       .limit(10);
 
-    // Scope messages to conversations belonging to this lead, not globally
     const leadConversations = await db
       .select({ id: conversations.id })
       .from(conversations)
       .where(eq(conversations.leadId, leadId))
       .limit(10);
 
-    const allMessages =
-      leadConversations.length > 0
-        ? await db
-            .select()
-            .from(messages)
-            .where(inArray(messages.conversationId, leadConversations.map((c) => c.id)))
-            .orderBy(desc(messages.createdAt))
-            .limit(20)
-        : [];
+    const allMessages = leadConversations.length > 0
+      ? await db
+          .select()
+          .from(messages)
+          .where(inArray(messages.conversationId, leadConversations.map((c) => c.id)))
+          .orderBy(desc(messages.createdAt))
+          .limit(20)
+      : [];
 
     const activityLog = leadActivities.map(
       (act) => `[${act.type.toUpperCase()}] ${act.title}${act.description ? `: ${act.description}` : ""}${act.outcome ? ` | Outcome: ${act.outcome}` : ""} (${new Date(act.createdAt).toLocaleDateString()})`
     );
-
-    // Use `direction` field (inbound/outbound) instead of non-existent `senderType`
     const msgLog = allMessages.map(
       (msg) => `[${(msg.direction ?? "unknown").toUpperCase()}]: ${msg.content} (${new Date(msg.createdAt).toLocaleDateString()})`
     );
@@ -403,14 +397,14 @@ ${activityLog.length > 0 ? activityLog.join("\n") : "No activities logged yet"}
 Message History:
 ${msgLog.length > 0 ? msgLog.join("\n") : "No messages yet"}
 
-Return ONLY a valid JSON object:
+Return ONLY valid JSON:
 {
-  "summary": <3-4 sentence narrative summary of the relationship and communication history>,
-  "keyMoments": [<array of up to 4 significant interaction strings>],
-  "sentiment": <"positive" | "neutral" | "negative" | "mixed">,
-  "lastTouchpoint": <string describing the most recent meaningful interaction>,
+  "summary": <3-4 sentence narrative>,
+  "keyMoments": [<up to 4 significant interaction strings>],
+  "sentiment": <"positive"|"neutral"|"negative"|"mixed">,
+  "lastTouchpoint": <string>,
   "relationshipStrength": <integer 0-100>,
-  "nextBestAction": <specific recommended next action string>
+  "nextBestAction": <string>
 }`;
 
     const response = await openai.chat.completions.create({
@@ -420,11 +414,178 @@ Return ONLY a valid JSON object:
       response_format: { type: "json_object" },
     });
 
-    const content = response.choices[0]?.message?.content ?? "{}";
-    res.json(JSON.parse(content));
+    await logUsage(userId, "conversation-summary", response.usage);
+    res.json(JSON.parse(response.choices[0]?.message?.content ?? "{}"));
   } catch (err) {
     console.error("Conversation summary error:", err);
     res.status(500).json({ error: "Failed to generate conversation summary" });
+  }
+});
+
+// ── AI Chat ───────────────────────────────────────────────────────────────────
+router.post("/ai/chat", requireAuth, async (req, res) => {
+  const userId = (req as any).userId as string;
+  const { messages: chatMessages } = req.body as {
+    messages: { role: "user" | "assistant"; content: string }[];
+  };
+
+  if (!Array.isArray(chatMessages) || chatMessages.length === 0) {
+    return void res.status(400).json({ error: "messages array required" });
+  }
+
+  try {
+    const [userLeads, userDeals] = await Promise.all([
+      db.select({
+        name: leadsTable.name,
+        status: leadsTable.status,
+        score: leadsTable.score,
+        urgencyScore: leadsTable.urgencyScore,
+        budget: leadsTable.budget,
+        priority: leadsTable.priority,
+      })
+        .from(leadsTable)
+        .where(ownsLead(userId))
+        .orderBy(desc(leadsTable.updatedAt))
+        .limit(30),
+      db.select({ title: deals.title, stage: deals.stage, value: deals.value })
+        .from(deals)
+        .where(or(eq(deals.createdById, userId), isNull(deals.createdById)))
+        .limit(20),
+    ]);
+
+    const totalLeads = userLeads.length;
+    const hotLeads = userLeads.filter((l) => (l.urgencyScore ?? 0) >= 70);
+    const totalPipeline = userDeals.reduce((s, d) => s + parseFloat(d.value ?? "0"), 0);
+    const avgScore = totalLeads > 0
+      ? Math.round(userLeads.reduce((s, l) => s + (l.score ?? 50), 0) / totalLeads)
+      : 0;
+    const statusSummary = userLeads.reduce<Record<string, number>>((acc, l) => {
+      acc[l.status] = (acc[l.status] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    const systemPrompt = `You are an expert real estate CRM assistant for a luxury property business. Help agents manage leads, understand their pipeline, and close more deals.
+
+Current CRM snapshot:
+- Total Leads: ${totalLeads}
+- Hot Leads (urgency ≥70): ${hotLeads.length}${hotLeads.length > 0 ? ` — ${hotLeads.slice(0, 5).map((l) => l.name).join(", ")}` : ""}
+- Average Lead Score: ${avgScore}/100
+- Status Breakdown: ${JSON.stringify(statusSummary)}
+- Active Deals: ${userDeals.length}
+- Total Pipeline Value: $${totalPipeline.toLocaleString()}
+- Top Leads: ${userLeads.slice(0, 5).map((l) => `${l.name} (score: ${l.score ?? 50})`).join(", ")}
+
+Be concise and actionable. Answer in 2-4 sentences unless a detailed breakdown is requested.`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      max_tokens: 500,
+      messages: [
+        { role: "system", content: systemPrompt },
+        ...chatMessages,
+      ],
+    });
+
+    await logUsage(userId, "chat", response.usage);
+
+    const reply = response.choices[0]?.message?.content ?? "Sorry, I couldn't generate a response.";
+    res.json({ reply });
+  } catch (err) {
+    console.error("AI chat error:", err);
+    res.status(500).json({ error: "Failed to get AI response" });
+  }
+});
+
+// ── AI Usage Stats ────────────────────────────────────────────────────────────
+router.get("/ai/usage", requireAuth, async (req, res) => {
+  const userId = (req as any).userId as string;
+
+  try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const thisMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+
+    const [byOperation, monthlyTotals, dailyUsage] = await Promise.all([
+      db.execute<{ operation: string; calls: string; input_tokens: string; output_tokens: string }>(sql`
+        SELECT operation,
+               COUNT(*)::text AS calls,
+               COALESCE(SUM(input_tokens), 0)::text AS input_tokens,
+               COALESCE(SUM(output_tokens), 0)::text AS output_tokens
+        FROM ai_usage_logs
+        WHERE user_id = ${userId}
+        GROUP BY operation
+        ORDER BY calls DESC
+      `),
+      db.execute<{ calls: string; input_tokens: string; output_tokens: string }>(sql`
+        SELECT COUNT(*)::text AS calls,
+               COALESCE(SUM(input_tokens), 0)::text AS input_tokens,
+               COALESCE(SUM(output_tokens), 0)::text AS output_tokens
+        FROM ai_usage_logs
+        WHERE user_id = ${userId}
+          AND created_at >= ${thisMonthStart.toISOString()}
+      `),
+      db.execute<{ day: string; calls: string; input_tokens: string; output_tokens: string }>(sql`
+        SELECT TO_CHAR(DATE_TRUNC('day', created_at), 'Mon DD') AS day,
+               COUNT(*)::text AS calls,
+               COALESCE(SUM(input_tokens), 0)::text AS input_tokens,
+               COALESCE(SUM(output_tokens), 0)::text AS output_tokens
+        FROM ai_usage_logs
+        WHERE user_id = ${userId}
+          AND created_at >= ${thirtyDaysAgo.toISOString()}
+        GROUP BY DATE_TRUNC('day', created_at)
+        ORDER BY DATE_TRUNC('day', created_at) ASC
+      `),
+    ]);
+
+    const monthly = monthlyTotals.rows[0] ?? { calls: "0", input_tokens: "0", output_tokens: "0" };
+    const mIn = parseInt(monthly.input_tokens, 10);
+    const mOut = parseInt(monthly.output_tokens, 10);
+    const monthlyCostCents = Math.round((mIn * PRICE_INPUT_PER_TOKEN + mOut * PRICE_OUTPUT_PER_TOKEN) * 100);
+
+    const allTimeInputTokens = byOperation.rows.reduce((s, r) => s + parseInt(r.input_tokens, 10), 0);
+    const allTimeOutputTokens = byOperation.rows.reduce((s, r) => s + parseInt(r.output_tokens, 10), 0);
+    const allTimeCalls = byOperation.rows.reduce((s, r) => s + parseInt(r.calls, 10), 0);
+    const allTimeCostCents = Math.round(
+      (allTimeInputTokens * PRICE_INPUT_PER_TOKEN + allTimeOutputTokens * PRICE_OUTPUT_PER_TOKEN) * 100
+    );
+
+    res.json({
+      monthly: {
+        calls: parseInt(monthly.calls, 10),
+        inputTokens: mIn,
+        outputTokens: mOut,
+        totalTokens: mIn + mOut,
+        estimatedCostUsd: monthlyCostCents / 100,
+      },
+      allTime: {
+        calls: allTimeCalls,
+        inputTokens: allTimeInputTokens,
+        outputTokens: allTimeOutputTokens,
+        totalTokens: allTimeInputTokens + allTimeOutputTokens,
+        estimatedCostUsd: allTimeCostCents / 100,
+      },
+      byOperation: byOperation.rows.map((r) => {
+        const inp = parseInt(r.input_tokens, 10);
+        const out = parseInt(r.output_tokens, 10);
+        const costCents = Math.round((inp * PRICE_INPUT_PER_TOKEN + out * PRICE_OUTPUT_PER_TOKEN) * 100);
+        return {
+          operation: r.operation,
+          calls: parseInt(r.calls, 10),
+          inputTokens: inp,
+          outputTokens: out,
+          totalTokens: inp + out,
+          estimatedCostUsd: costCents / 100,
+        };
+      }),
+      dailyUsage: dailyUsage.rows.map((r) => ({
+        day: r.day,
+        calls: parseInt(r.calls, 10),
+        inputTokens: parseInt(r.input_tokens, 10),
+        outputTokens: parseInt(r.output_tokens, 10),
+      })),
+    });
+  } catch (err) {
+    console.error("AI usage error:", err);
+    res.status(500).json({ error: "Failed to fetch AI usage" });
   }
 });
 
