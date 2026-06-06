@@ -4,8 +4,8 @@ import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, Eye, EyeOff, Mail } from "lucide-react"
-import { motion } from "framer-motion"
+import { Loader2, Eye, EyeOff, Mail, UserCheck, ArrowRight } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
 
 function GoogleIcon() {
   return (
@@ -18,6 +18,17 @@ function GoogleIcon() {
   )
 }
 
+function isEmailTakenError(msg: string) {
+  const lower = msg.toLowerCase()
+  return (
+    lower.includes("already registered") ||
+    lower.includes("already been registered") ||
+    lower.includes("already exists") ||
+    lower.includes("email already") ||
+    lower.includes("user already")
+  )
+}
+
 export default function SignUpPage() {
   const [, setLocation] = useLocation()
   const [email, setEmail] = useState("")
@@ -26,6 +37,7 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [error, setError] = useState("")
+  const [emailTaken, setEmailTaken] = useState(false)
   const [checkEmail, setCheckEmail] = useState(false)
 
   const handleGoogle = async () => {
@@ -39,7 +51,11 @@ export default function SignUpPage() {
       },
     })
     if (error) {
-      if (error.message.toLowerCase().includes("provider") || error.message.toLowerCase().includes("not enabled") || error.message.toLowerCase().includes("not supported")) {
+      if (
+        error.message.toLowerCase().includes("provider") ||
+        error.message.toLowerCase().includes("not enabled") ||
+        error.message.toLowerCase().includes("not supported")
+      ) {
         setError("Google sign-in isn't enabled yet. Go to your Supabase Dashboard → Authentication → Providers → Google and turn it on.")
       } else {
         setError("Google sign-in failed: " + error.message)
@@ -51,9 +67,10 @@ export default function SignUpPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    setEmailTaken(false)
 
     if (password.length < 6) {
-      setError("Password must be at least 6 characters")
+      setError("Password must be at least 6 characters.")
       return
     }
 
@@ -67,21 +84,24 @@ export default function SignUpPage() {
     })
 
     if (error) {
-      setError(error.message)
+      if (isEmailTakenError(error.message)) {
+        setEmailTaken(true)
+      } else {
+        setError(error.message)
+      }
       setLoading(false)
       return
     }
 
-    // If session exists immediately → email confirmation is OFF, let auth context redirect
     if (data.session) {
       return
     }
 
-    // Otherwise Supabase sent a confirmation email → show the check-email screen
     setCheckEmail(true)
     setLoading(false)
   }
 
+  // ── Check-email screen ───────────────────────────────────────────────────────
   if (checkEmail) {
     return (
       <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-gradient-to-br from-amber-50 via-background to-orange-50 px-4 py-12">
@@ -95,18 +115,12 @@ export default function SignUpPage() {
               <Mail className="h-8 w-8 text-primary" />
             </div>
             <h2 className="mb-2 text-xl font-semibold">Check your email</h2>
-            <p className="mb-1 text-sm text-muted-foreground">
-              We sent a confirmation link to
-            </p>
+            <p className="mb-1 text-sm text-muted-foreground">We sent a confirmation link to</p>
             <p className="mb-4 font-medium text-foreground">{email}</p>
             <p className="text-sm text-muted-foreground">
-              Click the link in that email to activate your account, then come back here to sign in.
+              Click the link in that email to activate your account, then come back to sign in.
             </p>
-            <Button
-              variant="outline"
-              className="mt-6 w-full"
-              onClick={() => setLocation("/sign-in")}
-            >
+            <Button variant="outline" className="mt-6 w-full" onClick={() => setLocation("/sign-in")}>
               Go to Sign In
             </Button>
           </div>
@@ -115,6 +129,77 @@ export default function SignUpPage() {
     )
   }
 
+  // ── Email-taken screen ───────────────────────────────────────────────────────
+  if (emailTaken) {
+    return (
+      <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-gradient-to-br from-amber-50 via-background to-orange-50 px-4 py-12">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="w-full max-w-md"
+        >
+          <div className="mb-8 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/60 shadow-lg shadow-primary/25">
+              <span className="text-lg font-bold text-primary-foreground">L</span>
+            </div>
+            <span className="text-2xl font-semibold tracking-tight">
+              Real<span className="text-primary">CRM</span>
+            </span>
+          </div>
+
+          <div className="rounded-2xl bg-white p-8 shadow-xl shadow-black/8">
+            {/* Icon */}
+            <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 border border-amber-100">
+              <UserCheck className="h-7 w-7 text-amber-500" />
+            </div>
+
+            <h1 className="mb-2 text-xl font-semibold text-foreground">Account already exists</h1>
+            <p className="mb-1 text-sm text-muted-foreground">
+              An account registered to
+            </p>
+            <p className="mb-4 truncate font-semibold text-foreground">{email}</p>
+            <p className="mb-6 text-sm text-muted-foreground leading-relaxed">
+              It looks like you already have an account with us. Sign in to continue, or use a different email address to create a new account.
+            </p>
+
+            <div className="space-y-3">
+              <Button
+                className="w-full gap-2 font-semibold"
+                onClick={() => setLocation("/sign-in")}
+              >
+                Sign in to your account
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  setEmailTaken(false)
+                  setEmail("")
+                  setPassword("")
+                }}
+              >
+                Use a different email
+              </Button>
+            </div>
+
+            <div className="mt-6 rounded-xl bg-muted/40 px-4 py-3">
+              <p className="text-xs text-muted-foreground text-center">
+                Forgot your password?{" "}
+                <Link href="/sign-in" className="font-medium text-primary hover:underline">
+                  Reset it on the sign-in page
+                </Link>
+              </p>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    )
+  }
+
+  // ── Main sign-up form ────────────────────────────────────────────────────────
   return (
     <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-gradient-to-br from-amber-50 via-background to-orange-50 px-4 py-12">
       <motion.div
@@ -134,7 +219,7 @@ export default function SignUpPage() {
 
         <div className="rounded-2xl bg-white p-8 shadow-xl shadow-black/8">
           <h1 className="mb-1 text-2xl font-semibold text-foreground">Create your account</h1>
-          <p className="mb-6 text-sm text-muted-foreground">Create your account to get started</p>
+          <p className="mb-6 text-sm text-muted-foreground">Join LuxeState CRM to manage your leads and close more deals.</p>
 
           <Button
             type="button"
@@ -163,7 +248,7 @@ export default function SignUpPage() {
                 id="email"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => { setEmail(e.target.value); setError("") }}
                 placeholder="james@luxeestate.com"
                 required
                 autoComplete="email"
@@ -177,7 +262,7 @@ export default function SignUpPage() {
                   id="password"
                   type={showPassword ? "text" : "password"}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => { setPassword(e.target.value); setError("") }}
                   placeholder="Choose a password (min. 6 characters)"
                   required
                   autoComplete="new-password"
@@ -186,18 +271,25 @@ export default function SignUpPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
 
-            {error && (
-              <div className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {error}
-              </div>
-            )}
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="rounded-lg border border-destructive/20 bg-destructive/8 px-3 py-2.5 text-sm text-destructive"
+                >
+                  {error}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <Button type="submit" className="w-full font-semibold" disabled={loading || googleLoading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

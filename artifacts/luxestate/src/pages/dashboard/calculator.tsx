@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useCallback, useRef } from "react"
 import { motion } from "framer-motion"
 import { DashboardPageHeader } from "@/components/dashboard/page-header"
 import { Input } from "@/components/ui/input"
@@ -19,6 +19,10 @@ import {
   PiggyBank,
   Receipt,
   BarChart2,
+  ArrowUpDown,
+  Loader2,
+  RefreshCw,
+  AlertTriangle,
 } from "lucide-react"
 
 const TABS = [
@@ -32,16 +36,7 @@ const TABS = [
   { id: "currency",     icon: ArrowLeftRight, label: "Currency" },
 ]
 
-const CURRENCY_RATES: { code: string; name: string; rate: number }[] = [
-  { code: "AED", name: "UAE Dirham",       rate: 3.67  },
-  { code: "GBP", name: "British Pound",    rate: 0.79  },
-  { code: "EUR", name: "Euro",             rate: 0.92  },
-  { code: "SAR", name: "Saudi Riyal",      rate: 3.75  },
-  { code: "CAD", name: "Canadian Dollar",  rate: 1.36  },
-  { code: "PKR", name: "Pakistani Rupee",  rate: 280   },
-  { code: "INR", name: "Indian Rupee",     rate: 83.5  },
-  { code: "AUD", name: "Australian Dollar",rate: 1.54  },
-]
+// Currency data is fetched live — no static rates here
 
 function ResultRow({ label, value, highlight, sub }: { label: string; value: string; highlight?: boolean; sub?: string }) {
   return (
@@ -494,60 +489,238 @@ function ClosingCostsCalc() {
   )
 }
 
-function CurrencyCalc() {
-  const [amount, setAmount] = useState("")
-  const [selected, setSelected] = useState("AED")
+const CACHE_KEY = "fx_rates_cache"
+const CACHE_TTL = 15 * 60 * 1000 // 15 minutes
 
-  const results = useMemo(() => {
-    const usd = parseFloat(amount) || 0
-    if (usd <= 0) return null
-    return CURRENCY_RATES.map((c) => ({ ...c, converted: usd * c.rate }))
-  }, [amount])
+type RateCache = {
+  base: string
+  rates: Record<string, number>
+  names: Record<string, string>
+  fetchedAt: number
+}
+
+function loadCache(): RateCache | null {
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY)
+    if (!raw) return null
+    const parsed: RateCache = JSON.parse(raw)
+    if (Date.now() - parsed.fetchedAt > CACHE_TTL) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function saveCache(data: RateCache) {
+  try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(data)) } catch { /* ignore */ }
+}
+
+function CurrencyCalc() {
+  const [fromAmount, setFromAmount] = useState("1")
+  const [fromCurrency, setFromCurrency] = useState("USD")
+  const [toCurrency, setToCurrency] = useState("EUR")
+  const [rates, setRates] = useState<Record<string, number>>({})
+  const [names, setNames] = useState<Record<string, string>>({})
+  const [fetchedAt, setFetchedAt] = useState<number | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [fetchError, setFetchError] = useState(false)
+  const fetchRef = useRef(false)
+
+  const fetchRates = useCallback(async (base: string, forceRefresh = false) => {
+    if (!forceRefresh) {
+      const cached = loadCache()
+      if (cached && cached.base === base) {
+        setRates(cached.rates)
+        setNames(cached.names)
+        setFetchedAt(cached.fetchedAt)
+        return
+      }
+    }
+    setLoading(true)
+    setFetchError(false)
+    try {
+      const [ratesRes, namesRes] = await Promise.all([
+        fetch(`https://api.frankfurter.app/latest?from=${base}`),
+        fetch("https://api.frankfurter.app/currencies"),
+      ])
+      if (!ratesRes.ok || !namesRes.ok) throw new Error("fetch failed")
+      const ratesData = await ratesRes.json()
+      const namesData: Record<string, string> = await namesRes.json()
+      const allRates: Record<string, number> = { ...ratesData.rates, [base]: 1 }
+      const cache: RateCache = { base, rates: allRates, names: namesData, fetchedAt: Date.now() }
+      saveCache(cache)
+      setRates(allRates)
+      setNames(namesData)
+      setFetchedAt(cache.fetchedAt)
+    } catch {
+      setFetchError(true)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (fetchRef.current) return
+    fetchRef.current = true
+    fetchRates(fromCurrency)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-fetch when fromCurrency changes (need a new base)
+  const prevFromRef = useRef(fromCurrency)
+  useEffect(() => {
+    if (prevFromRef.current !== fromCurrency) {
+      prevFromRef.current = fromCurrency
+      fetchRates(fromCurrency)
+    }
+  }, [fromCurrency, fetchRates])
+
+  const currencies = useMemo(() => Object.keys(names).sort(), [names])
+
+  const toAmount = useMemo(() => {
+    const amt = parseFloat(fromAmount)
+    if (!amt || !rates[toCurrency]) return ""
+    return (amt * rates[toCurrency]).toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 4,
+    })
+  }, [fromAmount, toCurrency, rates])
+
+  const rateLabel = useMemo(() => {
+    if (!rates[toCurrency]) return null
+    const r = rates[toCurrency]
+    return `1 ${fromCurrency} = ${r.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} ${toCurrency}`
+  }, [fromCurrency, toCurrency, rates])
+
+  const lastUpdated = useMemo(() => {
+    if (!fetchedAt) return null
+    const mins = Math.floor((Date.now() - fetchedAt) / 60000)
+    if (mins < 1) return "Just updated"
+    if (mins === 1) return "1 minute ago"
+    return `${mins} minutes ago`
+  }, [fetchedAt])
+
+  function handleSwap() {
+    const oldTo = toCurrency
+    setToCurrency(fromCurrency)
+    setFromCurrency(oldTo)
+    // rates will re-fetch via the effect above
+  }
+
+  const selectClass = "h-10 rounded-lg border border-input bg-background px-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/30 w-full"
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <div className="space-y-4">
-        <CalcInput label="Amount (USD)" value={amount} onChange={setAmount} placeholder="e.g. 100000" prefix="$" />
-        <div className="space-y-1.5">
-          <Label className="text-sm font-medium">Convert to</Label>
-          <div className="grid grid-cols-2 gap-2">
-            {CURRENCY_RATES.map((c) => (
-              <button
-                key={c.code}
-                onClick={() => setSelected(c.code)}
-                className={cn(
-                  "rounded-lg border px-3 py-2 text-left text-sm transition-colors",
-                  selected === c.code
-                    ? "border-primary bg-primary/10 font-semibold text-primary"
-                    : "border-border hover:border-primary/40 text-foreground"
-                )}
-              >
-                <span className="font-mono font-bold">{c.code}</span>
-                <span className="block text-xs text-muted-foreground truncate">{c.name}</span>
-              </button>
-            ))}
+    <div className="mx-auto max-w-xl space-y-4">
+      {/* From row */}
+      <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Amount</p>
+        <div className="flex gap-3">
+          <div className="flex-1">
+            <Input
+              type="number"
+              inputMode="decimal"
+              value={fromAmount}
+              onChange={(e) => setFromAmount(e.target.value)}
+              className="h-12 text-2xl font-bold tabular-nums border-0 bg-transparent p-0 shadow-none focus-visible:ring-0"
+              placeholder="1"
+            />
+          </div>
+          <div className="w-36 flex-shrink-0">
+            <select
+              value={fromCurrency}
+              onChange={(e) => setFromCurrency(e.target.value)}
+              className={cn(selectClass, "h-12 text-base")}
+            >
+              {currencies.map((c) => (
+                <option key={c} value={c}>{c} — {names[c] ?? c}</option>
+              ))}
+            </select>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={() => { setAmount(""); setSelected("AED") }} className="gap-2 text-muted-foreground">
-          <RotateCcw className="h-3.5 w-3.5" />Reset
+      </div>
+
+      {/* Swap button */}
+      <div className="flex items-center justify-center">
+        <button
+          onClick={handleSwap}
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card shadow-sm transition-all hover:border-primary/40 hover:bg-primary/5 hover:text-primary active:scale-95"
+          title="Swap currencies"
+        >
+          <ArrowUpDown className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* To row */}
+      <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Converted</p>
+        <div className="flex gap-3 items-center">
+          <div className="flex-1">
+            {loading ? (
+              <div className="flex items-center gap-2 h-12">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Fetching live rates…</span>
+              </div>
+            ) : fetchError ? (
+              <div className="flex items-center gap-2 h-12 text-destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <span className="text-sm">Failed to load rates</span>
+              </div>
+            ) : (
+              <p className="text-2xl font-bold tabular-nums text-primary leading-none py-2.5">
+                {toAmount || "—"}
+              </p>
+            )}
+          </div>
+          <div className="w-36 flex-shrink-0">
+            <select
+              value={toCurrency}
+              onChange={(e) => setToCurrency(e.target.value)}
+              className={cn(selectClass, "h-12 text-base")}
+            >
+              {currencies.map((c) => (
+                <option key={c} value={c}>{c} — {names[c] ?? c}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Rate info bar */}
+      {rateLabel && !loading && !fetchError && (
+        <div className="flex items-center justify-between rounded-lg bg-muted/30 px-4 py-2.5">
+          <span className="text-sm font-medium text-foreground">{rateLabel}</span>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            {lastUpdated && <span>{lastUpdated}</span>}
+            <button
+              onClick={() => fetchRates(fromCurrency, true)}
+              className="flex items-center gap-1 rounded-md px-2 py-1 hover:bg-muted transition-colors"
+              title="Refresh rates"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Refresh
+            </button>
+          </div>
+        </div>
+      )}
+
+      {fetchError && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full gap-2"
+          onClick={() => fetchRates(fromCurrency, true)}
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          Retry loading rates
         </Button>
-      </div>
-      <div className="space-y-3">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">Results</p>
-        {results ? (
-          <>
-            {results.map((c) => (
-              <ResultRow
-                key={c.code}
-                label={`${c.code} — ${c.name}`}
-                value={`${c.code} ${c.converted.toLocaleString("en-US", { maximumFractionDigits: 2 })}`}
-                highlight={c.code === selected}
-              />
-            ))}
-            <p className="text-xs text-muted-foreground pt-1">Rates are approximate. Verify before transactions.</p>
-          </>
-        ) : <EmptyResult text="Enter a USD amount to convert" />}
-      </div>
+      )}
+
+      <p className="text-center text-[11px] text-muted-foreground">
+        Rates from{" "}
+        <a href="https://frankfurter.app" target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-foreground">
+          Frankfurter (ECB)
+        </a>
+        . Refreshed every 15 minutes. Verify before transactions.
+      </p>
     </div>
   )
 }
