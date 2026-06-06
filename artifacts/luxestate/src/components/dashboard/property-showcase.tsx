@@ -33,7 +33,7 @@ const properties = [
     id: 1,
     title: "Manhattan Penthouse",
     address: "432 Park Avenue, New York, NY",
-    price: "$12,500,000",
+    price: "₨ 35 Cr",
     beds: 4,
     baths: 5,
     sqft: "6,200",
@@ -59,7 +59,7 @@ const properties = [
     id: 2,
     title: "Beverly Hills Estate",
     address: "1234 Sunset Boulevard, Los Angeles, CA",
-    price: "$28,900,000",
+    price: "₨ 81 Cr",
     beds: 7,
     baths: 9,
     sqft: "15,000",
@@ -85,7 +85,7 @@ const properties = [
     id: 3,
     title: "Miami Beach Villa",
     address: "789 Ocean Drive, Miami Beach, FL",
-    price: "$8,750,000",
+    price: "₨ 24.5 Cr",
     beds: 5,
     baths: 6,
     sqft: "7,800",
@@ -111,7 +111,7 @@ const properties = [
     id: 4,
     title: "Malibu Beach House",
     address: "21456 Pacific Coast Hwy, Malibu, CA",
-    price: "$15,200,000",
+    price: "₨ 42.5 Cr",
     beds: 6,
     baths: 7,
     sqft: "9,500",
@@ -181,12 +181,15 @@ export function PropertyShowcase({
       property.title.toLowerCase().includes(normalizedQuery) ||
       property.address.toLowerCase().includes(normalizedQuery)
     const matchesType = propertyType === "All Types" || property.type === propertyType
-    const numericPrice = Number(property.price.replace(/[$,]/g, ""))
+    const priceMatch = property.price.match(/₨\s*([\d.]+)\s*(Cr|L)?/)
+    const numericCr = priceMatch
+      ? (parseFloat(priceMatch[1]) * (priceMatch[2] === "L" ? 0.1 : 1))
+      : 0
     const matchesPrice =
       priceRange === "Price: Any" ||
-      (priceRange === "$1M - $5M" && numericPrice >= 1_000_000 && numericPrice <= 5_000_000) ||
-      (priceRange === "$5M - $10M" && numericPrice > 5_000_000 && numericPrice <= 10_000_000) ||
-      (priceRange === "$10M+" && numericPrice > 10_000_000)
+      (priceRange === "₨ Under 25 Cr" && numericCr < 25) ||
+      (priceRange === "₨ 25–50 Cr" && numericCr >= 25 && numericCr <= 50) ||
+      (priceRange === "₨ 50 Cr+" && numericCr > 50)
     const matchesBeds =
       bedroomFilter === "Any" ||
       (bedroomFilter === "4+" && property.beds >= 4) ||

@@ -104,7 +104,7 @@ export function DashboardPreview() {
                   {[
                     { label: "Total Leads", value: "2,847", color: "from-blue-500 to-cyan-500" },
                     { label: "Active Deals", value: "156", color: "from-primary to-amber-500" },
-                    { label: "Revenue", value: "$4.2M", color: "from-green-500 to-emerald-500" },
+                    { label: "Revenue", value: "₨ 11.8 Cr", color: "from-green-500 to-emerald-500" },
                     { label: "Conversion", value: "24.8%", color: "from-purple-500 to-pink-500" },
                   ].map((stat) => (
                     <div
@@ -205,7 +205,7 @@ export function DashboardPreview() {
                 </div>
                 <div>
                   <div className="text-sm font-medium">Deal Closed!</div>
-                  <div className="text-xs text-muted-foreground">$2.4M - Penthouse</div>
+                  <div className="text-xs text-muted-foreground">₨ 6.7 Cr - Penthouse</div>
                 </div>
               </div>
             </motion.div>

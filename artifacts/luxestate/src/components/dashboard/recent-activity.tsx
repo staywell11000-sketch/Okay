@@ -25,7 +25,7 @@ const activities = [
     type: "deal",
     icon: DollarSign,
     title: "Deal Closed",
-    description: "Malibu Beach House - $4.2M",
+    description: "Malibu Beach House - ₨ 11.8 Cr",
     time: "2 hours ago",
     color: "text-primary",
     bgColor: "bg-primary/10",

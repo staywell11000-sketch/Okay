@@ -89,7 +89,7 @@ export const initialProperties: Property[] = [
     agent: "Sarah Mitchell", analytics: { views: 410, inquiries: 31, saves: 29, trend: "+22%" },
     listedAt: "2026-01-15", updatedAt: "2026-05-20", daysOnMarket: 134,
     priceHistory: [{ date: "Jan 26", price: 27_500_000 }, { date: "Mar 26", price: 28_200_000 }, { date: "May 26", price: 28_900_000 }],
-    notes: "Seller motivated. Will consider offers above $27M.",
+    notes: "Seller motivated. Will consider offers above ₨ 75 Cr.",
   },
   {
     id: "p003", title: "Miami Beach Oceanfront Villa", address: "789 Ocean Drive", city: "Miami Beach", state: "FL", country: "USA",
@@ -219,7 +219,7 @@ export const initialProperties: Property[] = [
     agent: "Sarah Mitchell", analytics: { views: 621, inquiries: 48, saves: 43, trend: "+38%" },
     listedAt: "2026-03-15", updatedAt: "2026-05-28", daysOnMarket: 75,
     priceHistory: [{ date: "Mar 26", price: 40_000_000 }, { date: "May 26", price: 42_000_000 }],
-    notes: "Landmark property. Previous offers rejected under $40M.",
+    notes: "Landmark property. Previous offers rejected under ₨ 112 Cr.",
   },
   {
     id: "p013", title: "San Francisco Pacific Heights", address: "2701 Broadway", city: "San Francisco", state: "CA", country: "USA",

@@ -331,7 +331,7 @@ export function LeadDetailModal({ lead, onClose, onUpdate, onDelete }: Props) {
                           <Input
                             value={editData!.budget}
                             onChange={(e) => setField("budget", e.target.value)}
-                            placeholder="e.g. $5M–$8M"
+                            placeholder="e.g. ₨ 5–8 Cr"
                             className={cn("h-8 pl-8 text-sm", surfaceInputClass)}
                           />
                         </div>

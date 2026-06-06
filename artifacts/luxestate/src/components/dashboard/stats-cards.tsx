@@ -14,7 +14,7 @@ const stats = [
   },
   {
     name: "Revenue",
-    value: "$4.2M",
+    value: "₨ 11.8 Cr",
     change: "+23.1%",
     trend: "up",
     icon: DollarSign,

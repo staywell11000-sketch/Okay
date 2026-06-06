@@ -690,10 +690,8 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const isRTL = language !== "en"
 
   useEffect(() => {
-    const html = document.documentElement
-    html.setAttribute("lang", language)
-    html.setAttribute("dir", isRTL ? "rtl" : "ltr")
-  }, [language, isRTL])
+    document.documentElement.setAttribute("lang", language)
+  }, [language])
 
   const setLanguage = useCallback((lang: Language) => {
     setLanguageState(lang)

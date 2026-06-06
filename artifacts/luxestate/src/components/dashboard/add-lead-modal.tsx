@@ -188,7 +188,7 @@ export function AddLeadModal({ open, onClose, onAdd }: Props) {
                   id="lead-budget"
                   value={form.budget}
                   onChange={(e) => set("budget", e.target.value)}
-                  placeholder="e.g. $5M–$8M"
+                  placeholder="e.g. ₨ 5–8 Cr"
                   className={cn("pl-9", surfaceInputClass)}
                 />
               </div>

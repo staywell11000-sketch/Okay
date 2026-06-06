@@ -42,11 +42,9 @@ export function MortgageCalculatorModal({ open, onClose }: Props) {
     return { loanAmount, downAmount, monthly, totalPayment, totalInterest, interestPct }
   }, [price, downPct, rate, term])
 
-  const fmt = (n: number) =>
-    n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })
+  const fmt = (n: number) => `₨ ${Math.round(n).toLocaleString("en-PK")}`
 
-  const fmtMonthly = (n: number) =>
-    n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })
+  const fmtMonthly = (n: number) => `₨ ${Math.round(n).toLocaleString("en-PK")}`
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
