@@ -25,7 +25,7 @@ export type TranslationKey =
   | "nav.overview" | "nav.leads" | "nav.leadSources" | "nav.properties"
   | "nav.messages" | "nav.analytics" | "nav.aiIntelligence" | "nav.automations"
   | "nav.team" | "nav.deals" | "nav.documents" | "nav.calendar" | "nav.settings"
-  | "nav.calculator" | "nav.integrations" | "nav.aiUsage"
+  | "nav.calculator" | "nav.integrations" | "nav.aiUsage" | "nav.dealers"
   | "common.save" | "common.cancel" | "common.add" | "common.edit" | "common.delete"
   | "common.search" | "common.filter" | "common.loading" | "common.noData"
   | "common.refresh" | "common.export" | "common.import" | "common.view"
@@ -88,6 +88,7 @@ const en: Translations = {
   "nav.calculator": "Calculator",
   "nav.integrations": "Lead Sources",
   "nav.aiUsage": "AI Usage",
+  "nav.dealers": "Dealers",
   "common.save": "Save",
   "common.cancel": "Cancel",
   "common.add": "Add",
@@ -237,6 +238,7 @@ const ur: Translations = {
   "nav.calculator": "حساب کتاب",
   "nav.integrations": "لیڈ ذرائع",
   "nav.aiUsage": "AI استعمال",
+  "nav.dealers": "ڈیلرز",
   "common.save": "محفوظ کریں",
   "common.cancel": "منسوخ",
   "common.add": "شامل کریں",
@@ -386,6 +388,7 @@ const ps: Translations = {
   "nav.calculator": "حسابونه",
   "nav.integrations": "د لید سرچینې",
   "nav.aiUsage": "AI کارونه",
+  "nav.dealers": "ډیلران",
   "common.save": "خوندي کول",
   "common.cancel": "لغوول",
   "common.add": "اضافه کول",
@@ -535,6 +538,7 @@ const sd: Translations = {
   "nav.calculator": "ڪيلڪوليٽر",
   "nav.integrations": "ليڊ جا ذريعا",
   "nav.aiUsage": "AI استعمال",
+  "nav.dealers": "ڊيلر",
   "common.save": "محفوظ ڪريو",
   "common.cancel": "منسوخ",
   "common.add": "شامل ڪريو",

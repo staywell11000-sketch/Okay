@@ -53,6 +53,7 @@ import SettingsPage from "@/pages/dashboard/settings"
 import IntegrationsPage from "@/pages/dashboard/integrations"
 import CalculatorPage from "@/pages/dashboard/calculator"
 import AIUsagePage from "@/pages/dashboard/ai-usage"
+import DealersPage from "@/pages/dashboard/dealers"
 import { LanguageProvider } from "@/lib/i18n"
 
 
@@ -113,6 +114,7 @@ function DashboardRoutes() {
           <Route path="/dashboard/ai-usage" component={AIUsagePage} />
           <Route path="/dashboard/settings" component={SettingsPage} />
           <Route path="/dashboard/integrations" component={IntegrationsPage} />
+          <Route path="/dashboard/dealers" component={DealersPage} />
           <Route component={NotFound} />
         </Switch>
       </DashboardLayout>

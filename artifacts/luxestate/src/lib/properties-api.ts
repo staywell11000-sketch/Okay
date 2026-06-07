@@ -39,11 +39,14 @@ export type PropertyRecord = {
   zipCode?: string | null;
   country?: string | null;
   type?: string | null;
+  subtype?: string | null;
   status: string;
   price?: string | null;
   bedrooms?: number | null;
   bathrooms?: string | null;
   sqft?: number | null;
+  sizeMarla?: string | null;
+  sector?: string | null;
   lotSize?: string | null;
   yearBuilt?: number | null;
   parkingSpaces?: number | null;
@@ -52,6 +55,8 @@ export type PropertyRecord = {
   tags: string[];
   mlsNumber?: string | null;
   listedById?: string | null;
+  dealerId?: number | null;
+  agentId?: string | null;
   metadata?: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
@@ -74,11 +79,14 @@ export type PropertyInput = {
   zipCode?: string;
   country?: string;
   type?: string;
+  subtype?: string;
   status?: string;
   price?: string;
   bedrooms?: number;
   bathrooms?: string;
   sqft?: number;
+  sizeMarla?: string;
+  sector?: string;
   lotSize?: string;
   yearBuilt?: number;
   parkingSpaces?: number;
@@ -86,6 +94,8 @@ export type PropertyInput = {
   amenities?: string[];
   tags?: string[];
   mlsNumber?: string;
+  dealerId?: number;
+  agentId?: string;
   metadata?: Record<string, unknown>;
 };
 

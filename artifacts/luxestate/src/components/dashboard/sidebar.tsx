@@ -20,6 +20,7 @@ import {
   LogOut,
   Calculator,
   CreditCard,
+  Handshake,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -34,6 +35,7 @@ const navItems: { href: string; key: TranslationKey; icon: React.ElementType }[]
   { href: "/dashboard/leads",           key: "nav.leads",           icon: Users },
   { href: "/dashboard/integrations",    key: "nav.leadSources",     icon: Cable },
   { href: "/dashboard/properties",      key: "nav.properties",      icon: Building2 },
+  { href: "/dashboard/dealers",         key: "nav.dealers",         icon: Handshake },
   { href: "/dashboard/messages",        key: "nav.messages",        icon: MessageSquare },
   { href: "/dashboard/analytics",       key: "nav.analytics",       icon: BarChart3 },
   { href: "/dashboard/ai-intelligence", key: "nav.aiIntelligence",  icon: Brain },

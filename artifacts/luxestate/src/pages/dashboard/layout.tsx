@@ -36,7 +36,9 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/calendar":     "Calendar",
   "/dashboard/settings":     "Settings",
   "/dashboard/integrations": "Lead Sources",
+  "/dashboard/dealers":      "Dealers",
 }
+
 
 function getPageTitle(location: string): string {
   if (PAGE_TITLES[location]) return PAGE_TITLES[location]

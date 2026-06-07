@@ -32,6 +32,7 @@ export const deals = pgTable(
       () => users.id,
       { onDelete: "set null" },
     ),
+    dealerId: integer("dealer_id"),
     stage: varchar("stage", { length: 100 })
       .notNull()
       .default("lead"),

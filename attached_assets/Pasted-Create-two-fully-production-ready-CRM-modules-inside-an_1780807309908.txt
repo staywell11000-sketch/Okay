@@ -1,0 +1,225 @@
+Create two fully production-ready CRM modules inside an existing real estate CRM:
+
+Properties Page (Marketplace-style listings)
+Dealers Page (CRM partner management system)
+
+Both modules must be fully connected to Supabase with real CRUD functionality, no mock data.
+
+🏡 1. PROPERTIES MODULE
+CORE STRUCTURE
+
+Build a single “Properties” page with tab-based filtering:
+
+All Properties (default)
+Plots
+Houses
+Flats/Apartments
+Commercial Properties
+
+All tabs pull from the same Supabase table and filter dynamically.
+
+PROPERTY CARD UI
+
+Each property must be displayed in a modern real estate listing card:
+
+Cover image (first image)
+Title
+Location (sector/society/city)
+Price (PKR only)
+Size (Marla/Kanal)
+Property type badge (Plot / House / Flat / Commercial)
+Status badge (Available / Sold / Pending)
+Short description (max 2 lines)
+Assigned dealer (if any)
+Assigned agent (if any)
+
+Actions:
+
+View Details
+Edit Property
+Mark as Sold
+Share Property
+
+UI must be minimal, dense, and marketplace-style (similar to Zameen but CRM-optimized).
+
+FILTER SYSTEM
+
+Add advanced filtering:
+
+Property type
+Price range (PKR slider)
+Location
+Size (Marla/Kanal)
+Status
+Dealer
+Agent
+Sort by (Newest, Price Low–High, Price High–Low)
+
+Filters must update results instantly.
+
+ADD PROPERTY FUNCTION
+
+Fix and implement a fully working “Add Property” modal:
+
+Fields:
+
+Title
+Property type
+Price (PKR)
+Location
+Size
+Bedrooms (optional)
+Bathrooms (optional)
+Description
+Multiple images upload
+Status
+Assigned dealer
+Assigned agent
+
+Data must be stored in Supabase.
+
+PROPERTY DETAILS VIEW
+
+Clicking a property opens full details:
+
+Image gallery
+Full specs
+Linked leads
+Linked deals
+Assigned dealer & agent
+Activity log
+Edit mode
+SUPABASE TABLE: properties
+
+Fields:
+
+id
+title
+type
+price
+location
+size
+subtype
+status
+images[]
+description
+dealer_id
+agent_id
+created_at
+updated_at
+🧑‍💼 2. DEALERS MODULE
+CORE STRUCTURE
+
+Create a “Dealers” page for managing brokers, agents, investors, and partner agencies.
+
+DEALER LIST UI
+
+Display dealers in a minimal CRM-style table/list:
+
+Each row includes:
+
+Profile avatar / initials
+Name
+Company (if any)
+Phone number
+Email
+Location
+Dealer type:
+Individual
+Agency
+Investor
+Builder partner
+Total leads generated
+Total deals closed
+Status (Active / Inactive)
+
+Clicking opens a detailed side panel.
+
+ADD DEALER FUNCTION
+
+Create a working “Add Dealer” modal:
+
+Fields:
+
+Full name
+Company name (optional)
+Phone number
+Email
+Location
+Dealer type
+Profile image
+Notes
+Status
+SUPABASE TABLE: dealers
+
+Fields:
+
+id
+user_id
+name
+company
+phone
+email
+location
+dealer_type
+profile_image
+status
+notes
+created_at
+updated_at
+RELATIONSHIPS (IMPORTANT)
+
+Connect Dealers with CRM modules:
+
+Properties
+properties.dealer_id → dealers.id
+Leads
+leads.dealer_id → dealers.id (source tracking)
+Deals
+deals.dealer_id → dealers.id
+DEALER ANALYTICS (DETAIL VIEW)
+
+Show inside dealer profile:
+
+Total leads generated
+Total deals closed
+Conversion rate
+Total revenue influence
+Active properties assigned
+Recent activity timeline
+FILTERS + FEATURES
+Search dealers (name, phone, company)
+Filter by type
+Filter by status
+Sort by performance
+Pagination support
+UX REQUIREMENTS
+Minimal, clean CRM design
+High-density data tables
+Smooth side panels for details
+Fully responsive (mobile + desktop)
+Fast Supabase queries (optimized for large datasets)
+PERFORMANCE
+
+Must support:
+
+1000+ properties
+500+ dealers
+real-time filtering without lag
+BUSINESS LOGIC
+
+Dealers are a core CRM entity and must act as:
+
+Lead sources
+Property contributors
+Revenue tracking entities
+
+Ensure full integration into analytics and CRM workflows.
+
+FINAL GOAL
+
+Turn this CRM into a real estate operating system where:
+
+Properties behave like a marketplace (Zameen-style UI)
+Dealers behave like performance-tracked business partners
+Everything is connected via Supabase relationships
