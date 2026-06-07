@@ -6,7 +6,6 @@ import {
   X,
   Plus,
   Download,
-  Upload,
   Phone,
   Mail,
   MessageCircle,
@@ -53,7 +52,7 @@ import {
 import { Lead, LeadPriority, LeadSource, LeadStatus } from "@/components/dashboard/leads-types"
 import { LeadDetailModal } from "@/components/dashboard/lead-detail-modal"
 import { AddLeadModal } from "@/components/dashboard/add-lead-modal"
-import { LeadImportModal } from "@/components/dashboard/lead-import-modal"
+import { LeadExportImportModal } from "@/components/dashboard/lead-export-import-modal"
 import { useAuth } from "@/lib/auth-context"
 import { getOrCreateConversationForLead } from "@/lib/messaging-api"
 
@@ -158,7 +157,8 @@ export function LeadsTable({ leads, isLoading: externalLoading, onCreate, onUpda
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [detailLeadId, setDetailLeadId] = useState<number | null>(null)
   const [showAddLead, setShowAddLead] = useState(false)
-  const [showImport, setShowImport] = useState(false)
+  const [showExportImport, setShowExportImport] = useState(false)
+  const [exportImportTab, setExportImportTab] = useState<"export" | "import">("export")
   const [openingMsgLeadId, setOpeningMsgLeadId] = useState<number | null>(null)
 
 
@@ -315,22 +315,13 @@ export function LeadsTable({ leads, isLoading: externalLoading, onCreate, onUpda
           </Button>
           <Button
             variant="outline"
-            size="icon"
-            className="h-9 w-9 border-border/50"
-            onClick={() => exportCSV(leads)}
-            title="Export CSV"
-          >
-            <Download className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
             size="sm"
             className="h-9 gap-1.5 border-border/50"
-            onClick={() => setShowImport(true)}
-            title="Import leads from CSV or Excel"
+            onClick={() => { setExportImportTab("export"); setShowExportImport(true) }}
+            title="Export or import leads"
           >
-            <Upload className="h-4 w-4" />
-            <span className="hidden sm:inline">Import</span>
+            <Download className="h-4 w-4" />
+            <span className="hidden sm:inline">Export</span>
           </Button>
           {onSync && (
             <Button
@@ -906,10 +897,11 @@ export function LeadsTable({ leads, isLoading: externalLoading, onCreate, onUpda
         onClose={() => setShowAddLead(false)}
         onAdd={onCreate}
       />
-      <LeadImportModal
-        open={showImport}
-        onClose={() => setShowImport(false)}
-        existingLeads={leads}
+      <LeadExportImportModal
+        open={showExportImport}
+        onClose={() => setShowExportImport(false)}
+        leads={leads}
+        defaultTab={exportImportTab}
         onImport={async (imported) => { if (onImport) await onImport(imported) }}
       />
     </div>
