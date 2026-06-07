@@ -318,10 +318,10 @@ export function LeadsTable({ leads, isLoading: externalLoading, onCreate, onUpda
             size="sm"
             className="h-9 gap-1.5 border-border/50"
             onClick={() => { setExportImportTab("export"); setShowExportImport(true) }}
-            title="Export or import leads"
+            title="Import or export leads"
           >
             <Download className="h-4 w-4" />
-            <span className="hidden sm:inline">Export</span>
+            <span className="hidden sm:inline">Import/Export</span>
           </Button>
           {onSync && (
             <Button
