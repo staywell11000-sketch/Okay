@@ -25,7 +25,7 @@ export type TranslationKey =
   | "nav.overview" | "nav.leads" | "nav.leadSources" | "nav.properties"
   | "nav.messages" | "nav.analytics" | "nav.aiIntelligence" | "nav.automations"
   | "nav.team" | "nav.deals" | "nav.documents" | "nav.calendar" | "nav.settings"
-  | "nav.calculator" | "nav.integrations" | "nav.aiUsage" | "nav.dealers"
+  | "nav.calculator" | "nav.integrations" | "nav.aiUsage" | "nav.dealers" | "nav.billing"
   | "common.save" | "common.cancel" | "common.add" | "common.edit" | "common.delete"
   | "common.search" | "common.filter" | "common.loading" | "common.noData"
   | "common.refresh" | "common.export" | "common.import" | "common.view"
@@ -84,6 +84,7 @@ const en: Translations = {
   "nav.deals": "Deals",
   "nav.documents": "Documents",
   "nav.calendar": "Calendar",
+  "nav.billing": "Billing",
   "nav.settings": "Settings",
   "nav.calculator": "Calculator",
   "nav.integrations": "Lead Sources",
@@ -234,6 +235,7 @@ const ur: Translations = {
   "nav.deals": "ڈیلز",
   "nav.documents": "دستاویزات",
   "nav.calendar": "کیلنڈر",
+  "nav.billing": "بلنگ",
   "nav.settings": "ترتیبات",
   "nav.calculator": "حساب کتاب",
   "nav.integrations": "لیڈ ذرائع",
@@ -384,6 +386,7 @@ const ps: Translations = {
   "nav.deals": "معاملات",
   "nav.documents": "اسناد",
   "nav.calendar": "کلنډر",
+  "nav.billing": "بلنګ",
   "nav.settings": "ترتیبات",
   "nav.calculator": "حسابونه",
   "nav.integrations": "د لید سرچینې",
@@ -534,6 +537,7 @@ const sd: Translations = {
   "nav.deals": "ڊيل",
   "nav.documents": "دستاويز",
   "nav.calendar": "ڪيلينڊر",
+  "nav.billing": "بلنگ",
   "nav.settings": "سيٽنگ",
   "nav.calculator": "ڪيلڪوليٽر",
   "nav.integrations": "ليڊ جا ذريعا",

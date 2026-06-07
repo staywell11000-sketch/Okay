@@ -30,7 +30,7 @@ import { useCurrentUser } from "@/lib/user-api"
 import { useSettings } from "@/lib/settings-api"
 import { useLocation as useWouterLocation } from "wouter"
 import { useLanguage, type TranslationKey } from "@/lib/i18n"
-import { useSuperAdmin, usePlan } from "@/lib/plan-context"
+import { useSuperAdmin } from "@/lib/plan-context"
 
 const navItems: { href: string; key: TranslationKey; icon: React.ElementType }[] = [
   { href: "/dashboard",                 key: "nav.overview",        icon: LayoutDashboard },
@@ -47,6 +47,7 @@ const navItems: { href: string; key: TranslationKey; icon: React.ElementType }[]
   { href: "/dashboard/documents",       key: "nav.documents",       icon: FolderOpen },
   { href: "/dashboard/calculator",      key: "nav.calculator",      icon: Calculator },
   { href: "/dashboard/calendar",        key: "nav.calendar",        icon: CalendarDays },
+  { href: "/dashboard/billing",         key: "nav.billing",         icon: CreditCard },
   { href: "/dashboard/settings",        key: "nav.settings",        icon: Settings },
 ]
 
@@ -199,11 +200,7 @@ export function Sidebar({ collapsed, setCollapsed, notifOpen, onToggleNotif, unr
 function SidebarNavExtras({ collapsed }: { collapsed: boolean }) {
   const [location] = useLocation()
   const isSuperAdmin = useSuperAdmin()
-  const { credits } = usePlan()
-  const atLimit = credits && !isSuperAdmin && (credits.available ?? 0) === 0
-
   const extras = [
-    { href: "/dashboard/billing", label: "Billing", icon: CreditCard, show: true, badge: atLimit ? "!" : null },
     { href: "/admin", label: "Super Admin", icon: Shield, show: isSuperAdmin, badge: null },
   ]
 
