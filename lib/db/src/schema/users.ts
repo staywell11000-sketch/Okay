@@ -1,4 +1,4 @@
-import { pgTable, varchar, text, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, varchar, text, boolean, timestamp, integer } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: varchar("id", { length: 255 }).primaryKey(),
@@ -10,6 +10,8 @@ export const users = pgTable("users", {
   phone: varchar("phone", { length: 50 }),
   avatarUrl: text("avatar_url"),
   onboarded: boolean("onboarded").notNull().default(false),
+  organizationId: integer("organization_id"),
+  isSuspended: boolean("is_suspended").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

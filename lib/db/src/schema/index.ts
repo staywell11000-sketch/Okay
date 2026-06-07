@@ -16,3 +16,7 @@ export * from "./appointments";
 export * from "./user_settings";
 export * from "./ai_usage_logs";
 export * from "./dealers";
+export * from "./organizations";
+export * from "./plans";
+export * from "./payment_requests";
+export * from "./audit_logs";

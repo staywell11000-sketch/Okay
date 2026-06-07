@@ -18,6 +18,10 @@ import appointmentsRouter from "./appointments";
 import settingsRouter from "./settings";
 import notificationsRouter from "./notifications";
 import dealersRouter from "./dealers";
+import organizationsRouter from "./organizations";
+import paymentRequestsRouter from "./paymentRequests";
+import plansRouter from "./plans";
+import auditLogsRouter from "./auditLogs";
 
 const router: IRouter = Router();
 
@@ -40,5 +44,9 @@ router.use(appointmentsRouter);
 router.use(settingsRouter);
 router.use(notificationsRouter);
 router.use(dealersRouter);
+router.use(organizationsRouter);
+router.use(paymentRequestsRouter);
+router.use(plansRouter);
+router.use(auditLogsRouter);
 
 export default router;
