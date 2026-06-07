@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useRef, useCallback } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api-fetch"
 import { usePlan } from "@/lib/plan-context"
@@ -7,13 +7,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
-import { Separator } from "@/components/ui/separator"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { CheckCircle2, Clock, XCircle, Zap, CreditCard, Package, AlertTriangle, TrendingUp } from "lucide-react"
+import { CheckCircle2, Clock, XCircle, Zap, CreditCard, Package, AlertTriangle, TrendingUp, ImagePlus, X, Loader2 } from "lucide-react"
 import { format } from "date-fns"
 
 const PLAN_COLORS: Record<string, string> = {
@@ -21,12 +18,6 @@ const PLAN_COLORS: Record<string, string> = {
   starter: "bg-blue-500",
   professional: "bg-purple-500",
   agency: "bg-amber-500",
-}
-
-const PLAN_PRICES: Record<string, number> = {
-  starter: 9999,
-  professional: 19999,
-  agency: 25000,
 }
 
 const PLAN_FEATURES: Record<string, string[]> = {
@@ -37,6 +28,23 @@ const PLAN_FEATURES: Record<string, string[]> = {
 
 const AI_LIMITS: Record<string, number> = { starter: 100, professional: 1000, agency: 5000 }
 
+function objectPathToUrl(objectPath: string): string {
+  return objectPath.replace(/^\/objects/, `${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/storage/objects`)
+}
+
+async function uploadScreenshot(file: File): Promise<string> {
+  const res = await apiFetch("/api/storage/uploads/request-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+  })
+  if (!res.ok) throw new Error("Failed to get upload URL")
+  const { uploadURL, objectPath } = await res.json()
+  const put = await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file })
+  if (!put.ok) throw new Error("Upload failed")
+  return objectPathToUrl(objectPath)
+}
+
 function StatusBadge({ status }: { status: string }) {
   if (status === "pending") return <Badge variant="outline" className="gap-1 text-yellow-600 border-yellow-300"><Clock className="h-3 w-3" />Pending</Badge>
   if (status === "approved") return <Badge variant="outline" className="gap-1 text-green-600 border-green-300"><CheckCircle2 className="h-3 w-3" />Approved</Badge>
@@ -44,60 +52,157 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge variant="outline">{status}</Badge>
 }
 
+function ScreenshotUploader({ value, onChange }: { value: File | null; onChange: (f: File | null) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [dragging, setDragging] = useState(false)
+  const preview = value ? URL.createObjectURL(value) : null
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setDragging(false)
+    const f = e.dataTransfer.files[0]
+    if (f && f.type.startsWith("image/")) onChange(f)
+  }, [onChange])
+
+  if (value && preview) {
+    return (
+      <div className="relative rounded-xl overflow-hidden border border-border">
+        <img src={preview} alt="Payment screenshot" className="w-full max-h-52 object-contain bg-muted" />
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          className="absolute top-2 right-2 h-6 w-6 rounded-full bg-background/80 backdrop-blur flex items-center justify-center hover:bg-destructive hover:text-destructive-foreground transition-colors"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+        <div className="px-3 py-2 text-xs text-muted-foreground bg-muted/50 truncate">{value.name}</div>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className={`relative rounded-xl border-2 border-dashed transition-colors cursor-pointer ${dragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50 hover:bg-muted/40"}`}
+      onClick={() => inputRef.current?.click()}
+      onDragOver={e => { e.preventDefault(); setDragging(true) }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={handleDrop}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="sr-only"
+        onChange={e => { const f = e.target.files?.[0]; if (f) onChange(f) }}
+      />
+      <div className="flex flex-col items-center justify-center gap-2 py-8 px-4 text-center select-none">
+        <div className="h-11 w-11 rounded-xl bg-muted flex items-center justify-center">
+          <ImagePlus className="h-5 w-5 text-muted-foreground" />
+        </div>
+        <div>
+          <p className="text-sm font-medium">Upload payment screenshot</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Tap to choose from gallery or files · PNG, JPG, WEBP</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function SubmitPaymentDialog({ title, plan, amount, onSuccess }: { title: string; plan: string; amount: number; onSuccess: () => void }) {
   const [open, setOpen] = useState(false)
-  const [screenshotUrl, setScreenshotUrl] = useState("")
+  const [file, setFile] = useState<File | null>(null)
   const [notes, setNotes] = useState("")
+  const [uploading, setUploading] = useState(false)
   const { toast } = useToast()
 
+  const reset = () => { setFile(null); setNotes(""); setUploading(false) }
+
   const mutation = useMutation({
-    mutationFn: () => apiFetch("/api/payments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount, plan, screenshotUrl: screenshotUrl || undefined, notes: notes || undefined }),
-    }).then(r => r.json()),
+    mutationFn: async () => {
+      let screenshotUrl: string | undefined
+      if (file) {
+        setUploading(true)
+        screenshotUrl = await uploadScreenshot(file)
+        setUploading(false)
+      }
+      const res = await apiFetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount, plan, screenshotUrl, notes: notes || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Submission failed")
+      return data
+    },
     onSuccess: () => {
       toast({ title: "Payment request submitted", description: "Our team will review it within 24 hours." })
       setOpen(false)
-      setScreenshotUrl("")
-      setNotes("")
+      reset()
       onSuccess()
     },
-    onError: () => toast({ title: "Failed to submit", variant: "destructive" }),
+    onError: (err: any) => {
+      setUploading(false)
+      toast({ title: err.message ?? "Failed to submit", variant: "destructive" })
+    },
   })
 
+  const isPending = mutation.isPending || uploading
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={v => { if (!isPending) { setOpen(v); if (!v) reset() } }}>
       <DialogTrigger asChild>
         <Button size="sm">{title}</Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Submit Payment Request</DialogTitle>
           <DialogDescription>
-            Send payment of <strong>Rs. {amount.toLocaleString()}</strong> to our bank account, then submit a screenshot for verification.
+            Transfer <strong>Rs. {amount.toLocaleString()}</strong> to our bank account, take a screenshot, and upload it below.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-2">
-          <div className="rounded-lg bg-muted p-4 text-sm space-y-1">
+
+        <div className="space-y-4 py-1">
+          {/* Bank details */}
+          <div className="rounded-xl bg-muted p-4 text-sm space-y-1.5">
             <p className="font-semibold text-foreground">Bank Transfer Details</p>
-            <p className="text-muted-foreground">Account Name: LuxeState CRM</p>
-            <p className="text-muted-foreground">Bank: HBL / Easypaisa / JazzCash</p>
-            <p className="text-muted-foreground">Amount: Rs. {amount.toLocaleString()}</p>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-muted-foreground">
+              <span className="font-medium text-foreground/70">Account</span><span>LuxeState CRM</span>
+              <span className="font-medium text-foreground/70">Bank</span><span>HBL / Easypaisa / JazzCash</span>
+              <span className="font-medium text-foreground/70">Amount</span><span className="font-semibold text-foreground">Rs. {amount.toLocaleString()}</span>
+              <span className="font-medium text-foreground/70">Plan</span><span className="capitalize">{plan.replace("addon_", "Add-on: ").replace(/_/g, " ")}</span>
+            </div>
           </div>
-          <div className="space-y-1">
-            <Label htmlFor="screenshot">Payment Screenshot URL</Label>
-            <Input id="screenshot" placeholder="https://..." value={screenshotUrl} onChange={e => setScreenshotUrl(e.target.value)} />
+
+          {/* Screenshot upload */}
+          <div className="space-y-1.5">
+            <Label>Payment Screenshot <span className="text-muted-foreground font-normal">(recommended)</span></Label>
+            <ScreenshotUploader value={file} onChange={setFile} />
           </div>
-          <div className="space-y-1">
-            <Label htmlFor="notes">Notes (optional)</Label>
-            <Textarea id="notes" placeholder="Transaction ID, reference..." value={notes} onChange={e => setNotes(e.target.value)} rows={2} />
+
+          {/* Notes */}
+          <div className="space-y-1.5">
+            <Label htmlFor="notes">Notes <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <Textarea
+              id="notes"
+              placeholder="Transaction ID, bank reference number..."
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              rows={2}
+              className="resize-none"
+            />
           </div>
         </div>
+
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
-            {mutation.isPending ? "Submitting..." : "Submit Request"}
+          <Button variant="outline" onClick={() => { setOpen(false); reset() }} disabled={isPending}>Cancel</Button>
+          <Button onClick={() => mutation.mutate()} disabled={isPending} className="min-w-28">
+            {uploading ? (
+              <><Loader2 className="h-4 w-4 animate-spin mr-2" />Uploading…</>
+            ) : mutation.isPending ? (
+              <><Loader2 className="h-4 w-4 animate-spin mr-2" />Submitting…</>
+            ) : (
+              "Submit Request"
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -120,7 +225,7 @@ export default function BillingPage() {
   })
 
   const payments = paymentsData?.data ?? []
-  const plans = plansData?.plans ?? []
+  const plans = (plansData?.plans ?? []).filter((p: any) => p.slug !== "trial")
 
   const aiUsedPercent = credits
     ? Math.min(100, ((credits.used) / (credits.planIncluded || 1)) * 100)
@@ -329,7 +434,7 @@ export default function BillingPage() {
               {payments.map((p: any) => (
                 <div key={p.id} className="flex items-center justify-between rounded-lg border p-3">
                   <div className="space-y-0.5">
-                    <p className="text-sm font-medium capitalize">{p.plan.replace("addon_", "Add-On: ").replace("_", " ")}</p>
+                    <p className="text-sm font-medium capitalize">{p.plan.replace("addon_", "Add-On: ").replace(/_/g, " ")}</p>
                     <p className="text-xs text-muted-foreground">{format(new Date(p.submitted_at), "MMM d, yyyy · h:mm a")}</p>
                     {p.rejection_reason && <p className="text-xs text-destructive mt-1">Reason: {p.rejection_reason}</p>}
                   </div>

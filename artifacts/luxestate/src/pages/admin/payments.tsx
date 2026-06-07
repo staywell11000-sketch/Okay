@@ -50,9 +50,20 @@ function ApproveDialog({ payment, onSuccess }: { payment: any; onSuccess: () => 
               {payment.notes && <p><strong>Notes:</strong> {payment.notes}</p>}
             </div>
             {payment.screenshot_url && (
-              <a href={payment.screenshot_url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-primary hover:underline">
-                <ExternalLink className="h-3.5 w-3.5" />View Screenshot
-              </a>
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Payment Screenshot</p>
+                <div className="rounded-xl overflow-hidden border border-border bg-muted">
+                  <img
+                    src={payment.screenshot_url}
+                    alt="Payment proof"
+                    className="w-full max-h-64 object-contain"
+                    onError={e => { (e.target as HTMLImageElement).style.display = "none" }}
+                  />
+                </div>
+                <a href={payment.screenshot_url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-primary hover:underline">
+                  <ExternalLink className="h-3 w-3" />Open full image
+                </a>
+              </div>
             )}
             {!isAddon && (
               <div className="space-y-1">
