@@ -265,6 +265,20 @@ export function useDeleteProperty() {
   });
 }
 
+export function useBulkImportProperties() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (rows: any[]) =>
+      apiFetch<{ imported: number; skipped: number; errors: string[] }>("/properties/bulk", {
+        method: "POST",
+        body: JSON.stringify({ rows }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PROPERTIES_KEY });
+    },
+  });
+}
+
 // ── Image upload helper ───────────────────────────────────────────────────────
 export async function uploadPropertyImage(file: File): Promise<string> {
   const urlRes = await apiFetch<{ uploadURL: string; objectPath: string }>(

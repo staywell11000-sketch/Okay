@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { properties } from "@workspace/db/schema";
+import { properties, dealers } from "@workspace/db/schema";
 import { eq, ilike, and, or, desc, asc, count, gte, lte, SQL } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
 
@@ -201,6 +201,80 @@ router.patch("/properties/:id/status", requireAuth, async (req: any, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update status" });
+  }
+});
+
+// ── Bulk import with auto-dealer creation ────────────────────────────────────
+router.post("/properties/bulk", requireAuth, async (req: any, res) => {
+  const userId: string = req.userId;
+  try {
+    const rows: any[] = Array.isArray(req.body) ? req.body : req.body?.rows ?? [];
+    if (!rows.length) return res.status(400).json({ error: "No rows provided" });
+
+    const results = { imported: 0, skipped: 0, errors: [] as string[] };
+
+    for (const row of rows) {
+      try {
+        let dealerId: number | null = null;
+
+        // Auto-create/find dealer if dealer_name provided
+        if (row.dealer_name?.trim()) {
+          const name = row.dealer_name.trim();
+          const existing = await db.select({ id: dealers.id })
+            .from(dealers)
+            .where(and(eq(dealers.userId, userId), eq(dealers.name, name)))
+            .limit(1);
+
+          if (existing.length > 0) {
+            dealerId = existing[0].id;
+          } else {
+            const [newDealer] = await db.insert(dealers).values({
+              userId,
+              name,
+              phone: row.dealer_phone?.trim() || "",
+              company: row.dealer_company?.trim() || null,
+              dealerType: row.dealer_type?.trim() || "individual",
+              status: "active",
+              updatedAt: new Date(),
+            }).returning({ id: dealers.id });
+            dealerId = newDealer?.id ?? null;
+          }
+        }
+
+        await db.insert(properties).values({
+          title: row.title?.trim() || "Untitled Property",
+          description: row.description?.trim() || null,
+          address: row.address?.trim() || "",
+          city: row.city?.trim() || "",
+          state: row.state?.trim() || "Punjab",
+          country: "PK",
+          type: row.type?.trim() || "house",
+          status: row.status?.trim() || "available",
+          price: row.price ? String(row.price).replace(/[^0-9.]/g, "") : null,
+          bedrooms: row.bedrooms ? Number(row.bedrooms) : null,
+          bathrooms: row.bathrooms ? String(row.bathrooms) : null,
+          sqft: row.sqft ? Number(row.sqft) : null,
+          sizeMarla: row.size_marla?.trim() || null,
+          sector: row.sector?.trim() || null,
+          images: [],
+          amenities: [],
+          tags: ["Imported"],
+          dealerId,
+          listedById: userId,
+          updatedAt: new Date(),
+        });
+
+        results.imported++;
+      } catch (err: any) {
+        results.skipped++;
+        results.errors.push(err?.message ?? "Row failed");
+      }
+    }
+
+    res.json(results);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Bulk import failed" });
   }
 });
 

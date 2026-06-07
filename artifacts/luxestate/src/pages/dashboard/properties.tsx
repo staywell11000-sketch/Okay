@@ -6,16 +6,17 @@ import { PropertyDetailModal } from "@/components/dashboard/property-detail-moda
 import { Property } from "@/components/dashboard/properties-data"
 import {
   useProperties, useCreateProperty, useUpdateProperty,
-  useUpdatePropertyStatus, useDeleteProperty,
+  useUpdatePropertyStatus, useDeleteProperty, useBulkImportProperties,
   propertyToInput, recordToProperty,
   type PropertyRecord, type PropertyInput,
 } from "@/lib/properties-api"
 import { useDealers, type DealerRecord } from "@/lib/dealers-api"
+import { PropertyImportExportModal } from "@/components/dashboard/property-import-export-modal"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Search, Filter, Home, Building2, Layers, Store } from "lucide-react"
+import { Plus, Search, Home, Building2, Layers, Store, Download } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
@@ -49,9 +50,10 @@ export default function PropertiesPage() {
   const [status, setStatus]       = useState("all")
   const [sort, setSort]           = useState("newest")
   const [dealerFilter, setDealerFilter] = useState("all")
-  const [addOpen, setAddOpen]     = useState(false)
-  const [editTarget, setEditTarget] = useState<PropertyRecord | null>(null)
-  const [viewTarget, setViewTarget] = useState<Property | null>(null)
+  const [addOpen, setAddOpen]         = useState(false)
+  const [importExportOpen, setImportExportOpen] = useState(false)
+  const [editTarget, setEditTarget]   = useState<PropertyRecord | null>(null)
+  const [viewTarget, setViewTarget]   = useState<Property | null>(null)
 
   const filters = {
     search: search || undefined,
@@ -69,6 +71,7 @@ export default function PropertiesPage() {
   const updateMutation = useUpdateProperty()
   const statusMutation = useUpdatePropertyStatus()
   const deleteMutation = useDeleteProperty()
+  const bulkImport     = useBulkImportProperties()
 
   const rawRecords = (propertiesData?.data ?? []) as unknown as PropertyRecord[]
   const dealers: DealerRecord[] = dealersData?.data ?? []
@@ -204,6 +207,9 @@ export default function PropertiesPage() {
               {total} listing{total !== 1 ? "s" : ""}
             </Badge>
           )}
+          <Button size="sm" variant="outline" onClick={() => setImportExportOpen(true)} className="h-9">
+            <Download className="mr-1.5 h-4 w-4" /> Import / Export
+          </Button>
           <Button size="sm" onClick={() => setAddOpen(true)} className="h-9">
             <Plus className="mr-1.5 h-4 w-4" /> Add Property
           </Button>
@@ -263,6 +269,19 @@ export default function PropertiesPage() {
         existing={editTarget}
         isSaving={isMutating}
         dealers={dealers}
+      />
+
+      {/* Import / Export Modal */}
+      <PropertyImportExportModal
+        open={importExportOpen}
+        onClose={() => setImportExportOpen(false)}
+        properties={rawRecords}
+        onImport={async (rows) => {
+          const result = await bulkImport.mutateAsync(rows)
+          if (result.imported > 0) toast.success(`Imported ${result.imported} propert${result.imported !== 1 ? "ies" : "y"}`)
+          if (result.skipped > 0) toast.warning(`${result.skipped} rows skipped`)
+          return result
+        }}
       />
 
       {/* Detail Panel (existing component) */}

@@ -166,7 +166,7 @@ router.post("/ai/analyze-lead/:id", requireAuth, async (req, res) => {
       : null;
 
     const { analysis, usage } = await analyzeLeadWithAI({ lead, recentMessages, recentActivities, dealInfo });
-    await logUsage(userId, "analyze-lead", usage);
+    await logUsage(userId, undefined, "analyze-lead", usage);
 
     const [updated] = await db
       .update(leadsTable)
@@ -241,7 +241,7 @@ router.post("/ai/analyze-all", requireAuth, async (req, res) => {
         const { analysis, usage } = await analyzeLeadWithAI({
           lead, recentMessages: [], recentActivities, dealInfo,
         });
-        await logUsage(userId, "analyze-all", usage);
+        await logUsage(userId, undefined, "analyze-all", usage);
 
         await db
           .update(leadsTable)
@@ -350,7 +350,7 @@ Return ONLY a valid JSON object:
       response_format: { type: "json_object" },
     });
 
-    await logUsage(userId, "sales-insights", response.usage);
+    await logUsage(userId, undefined, "sales-insights", response.usage);
 
     const content = response.choices[0]?.message?.content ?? "{}";
     const insights = JSON.parse(content);
@@ -430,7 +430,7 @@ Return ONLY valid JSON:
       response_format: { type: "json_object" },
     });
 
-    await logUsage(userId, "conversation-summary", response.usage);
+    await logUsage(userId, undefined, "conversation-summary", response.usage);
     res.json(JSON.parse(response.choices[0]?.message?.content ?? "{}"));
   } catch (err) {
     console.error("Conversation summary error:", err);
@@ -502,7 +502,7 @@ Be concise and actionable. Answer in 2-4 sentences unless a detailed breakdown i
       ],
     });
 
-    await logUsage(userId, "chat", response.usage);
+    await logUsage(userId, undefined, "chat", response.usage);
 
     const reply = response.choices[0]?.message?.content ?? "Sorry, I couldn't generate a response.";
     res.json({ reply });
