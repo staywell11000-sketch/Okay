@@ -137,14 +137,29 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
           const plan = isSuperAdmin ? "agency" : selectedPlan;
           const status = isSuperAdmin ? "active" : (selectedPlan === "free" ? "active" : "trial");
 
+          // Use ON CONFLICT to handle concurrent requests (unique constraint on owner_id)
           const orgResult = await db.execute(sql`
             INSERT INTO organizations (name, owner_id, plan, subscription_status, is_internal, created_at, updated_at)
             VALUES (${orgName}, ${user.id}, ${plan}, ${status}, ${isSuperAdmin}, NOW(), NOW())
+            ON CONFLICT (owner_id) DO NOTHING
             RETURNING id
           `).catch((err: any) => { logger.error({ err }, "requireAuth: org auto-create failed"); return null; });
 
+          // If INSERT returned no row (concurrent request already inserted), find the existing org
+          let newOrgId: number | null = null;
           if (orgResult && orgResult.rows.length > 0) {
-            const newOrgId = (orgResult.rows[0] as any).id;
+            newOrgId = (orgResult.rows[0] as any).id;
+            logger.info({ userId: user.id, orgId: newOrgId, plan }, "Created organization for new owner");
+          } else {
+            const existing = await db.execute(sql`
+              SELECT id FROM organizations WHERE owner_id = ${user.id} LIMIT 1
+            `).catch(() => null);
+            if (existing && existing.rows.length > 0) {
+              newOrgId = (existing.rows[0] as any).id;
+            }
+          }
+
+          if (newOrgId) {
             await db.execute(sql`
               UPDATE users
               SET organization_id = ${newOrgId},
@@ -152,7 +167,6 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
                   updated_at      = NOW()
               WHERE id = ${user.id}
             `);
-            logger.info({ userId: user.id, orgId: newOrgId, plan }, "Created organization for new owner");
           }
         }
       } else {

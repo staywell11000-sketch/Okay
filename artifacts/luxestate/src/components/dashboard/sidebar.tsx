@@ -26,25 +26,26 @@ type NavItem = {
   key: TranslationKey
   icon: React.ElementType
   permissionResource?: string
+  tourId?: string
 }
 
 const navItems: NavItem[] = [
-  { href: "/dashboard",                 key: "nav.overview",        icon: LayoutDashboard },
-  { href: "/dashboard/leads",           key: "nav.leads",           icon: Users,          permissionResource: "leads" },
-  { href: "/dashboard/integrations",    key: "nav.leadSources",     icon: Cable,          permissionResource: "leads" },
-  { href: "/dashboard/properties",      key: "nav.properties",      icon: Building2,      permissionResource: "properties" },
-  { href: "/dashboard/dealers",         key: "nav.dealers",         icon: Handshake,      permissionResource: "dealers" },
-  { href: "/dashboard/messages",        key: "nav.messages",        icon: MessageSquare,  permissionResource: "messages" },
-  { href: "/dashboard/analytics",       key: "nav.analytics",       icon: BarChart3,      permissionResource: "analytics" },
-  { href: "/dashboard/ai-intelligence", key: "nav.aiIntelligence",  icon: Brain,          permissionResource: "ai_intelligence" },
-  { href: "/dashboard/automations",     key: "nav.automations",     icon: Zap,            permissionResource: "automations" },
-  { href: "/dashboard/team",            key: "nav.team",            icon: Users2,         permissionResource: "team" },
-  { href: "/dashboard/deals",           key: "nav.deals",           icon: ClipboardList,  permissionResource: "deals" },
-  { href: "/dashboard/documents",       key: "nav.documents",       icon: FolderOpen,     permissionResource: "documents" },
+  { href: "/dashboard",                 key: "nav.overview",        icon: LayoutDashboard, tourId: "tour-dashboard" },
+  { href: "/dashboard/leads",           key: "nav.leads",           icon: Users,           permissionResource: "leads",          tourId: "tour-leads" },
+  { href: "/dashboard/integrations",    key: "nav.leadSources",     icon: Cable,           permissionResource: "leads" },
+  { href: "/dashboard/properties",      key: "nav.properties",      icon: Building2,       permissionResource: "properties",     tourId: "tour-properties" },
+  { href: "/dashboard/dealers",         key: "nav.dealers",         icon: Handshake,       permissionResource: "dealers",        tourId: "tour-dealers" },
+  { href: "/dashboard/messages",        key: "nav.messages",        icon: MessageSquare,   permissionResource: "messages",       tourId: "tour-messages" },
+  { href: "/dashboard/analytics",       key: "nav.analytics",       icon: BarChart3,       permissionResource: "analytics",      tourId: "tour-analytics" },
+  { href: "/dashboard/ai-intelligence", key: "nav.aiIntelligence",  icon: Brain,           permissionResource: "ai_intelligence", tourId: "tour-ai" },
+  { href: "/dashboard/automations",     key: "nav.automations",     icon: Zap,             permissionResource: "automations",    tourId: "tour-automations" },
+  { href: "/dashboard/team",            key: "nav.team",            icon: Users2,          permissionResource: "team",           tourId: "tour-team" },
+  { href: "/dashboard/deals",           key: "nav.deals",           icon: ClipboardList,   permissionResource: "deals",          tourId: "tour-deals" },
+  { href: "/dashboard/documents",       key: "nav.documents",       icon: FolderOpen,      permissionResource: "documents",      tourId: "tour-documents" },
   { href: "/dashboard/calculator",      key: "nav.calculator",      icon: Calculator },
-  { href: "/dashboard/calendar",        key: "nav.calendar",        icon: CalendarDays,   permissionResource: "calendar" },
+  { href: "/dashboard/calendar",        key: "nav.calendar",        icon: CalendarDays,    permissionResource: "calendar",       tourId: "tour-calendar" },
   { href: "/dashboard/billing",         key: "nav.billing",         icon: CreditCard },
-  { href: "/dashboard/settings",        key: "nav.settings",        icon: Settings,       permissionResource: "settings" },
+  { href: "/dashboard/settings",        key: "nav.settings",        icon: Settings,        permissionResource: "settings",       tourId: "tour-settings" },
 ]
 
 type SidebarProps = {
@@ -151,6 +152,7 @@ export function Sidebar({ collapsed, setCollapsed, notifOpen, onToggleNotif, unr
                 const inner = (
                   <Link key={item.href} href={item.href} onClick={(e) => handleNavClick(item.href, e)}>
                     <div
+                      data-tour={item.tourId}
                       className={cn(
                         "relative flex h-9 items-center gap-3 rounded-xl px-3 cursor-pointer",
                         "transition-colors duration-150",

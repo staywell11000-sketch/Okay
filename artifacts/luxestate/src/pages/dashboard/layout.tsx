@@ -22,6 +22,7 @@ import {
   type ApiNotification,
 } from "@/lib/notifications-api"
 import { cn } from "@/lib/utils"
+import { CRMTour } from "@/components/tour/CRMTour"
 
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard":              "Overview",
@@ -365,6 +366,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         </motion.main>
       </div>
       <SupportChatWidget />
+      <CRMTour onExpand={() => handleSetCollapsed(false)} />
     </div>
   )
 }
