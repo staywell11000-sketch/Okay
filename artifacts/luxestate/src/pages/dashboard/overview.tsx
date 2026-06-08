@@ -9,14 +9,16 @@ import {
   Users, DollarSign, CalendarDays, TrendingUp,
   RefreshCw, ArrowRight, Building2,
   UserCheck, ClipboardList, CheckCircle2, Circle,
-  AlertCircle, Loader2, UserPlus, WifiOff,
+  AlertCircle, Loader2, UserPlus, WifiOff, Zap, Sparkles, Bot,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
 import { DashboardPageHeader } from "@/components/dashboard/page-header"
 import { useAnalytics, useRefreshAnalytics } from "@/lib/analytics-api"
 import { useAuth } from "@/lib/auth-context"
+import { usePlan } from "@/lib/plan-context"
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -149,6 +151,8 @@ export default function OverviewPage() {
   const refresh = useRefreshAnalytics()
   const [refreshing, setRefreshing] = useState(false)
   const { user } = useAuth()
+  const { credits, org, isSuperAdmin } = usePlan()
+  const [, navTo] = useLocation()
 
   // true only when we have NO data yet (first-ever load)
   const isFirstLoad = isPending && isFetching
@@ -320,6 +324,74 @@ export default function OverviewPage() {
           </>
         )}
       </div>
+
+      {/* ── AI Actions Widget ─────────────────────────────────────── */}
+      {!isSuperAdmin && org && org.plan !== "free" && (
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.28 }}
+          className="glass-card p-4 cursor-pointer group"
+          onClick={() => navTo("/dashboard/billing")}
+        >
+          <div className="flex items-center gap-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-yellow-500/10">
+              <Zap className="h-5 w-5 text-yellow-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold text-foreground">AI Actions</p>
+                  {credits && (credits.bonusActions ?? 0) > 0 && (
+                    <Badge variant="outline" className="text-xs gap-1 text-purple-600 border-purple-300">
+                      <Sparkles className="h-2.5 w-2.5" />
+                      +{(credits.bonusActions ?? 0).toLocaleString()} Bonus
+                    </Badge>
+                  )}
+                </div>
+                <span className="text-sm font-medium text-foreground tabular-nums">
+                  {credits ? (credits.available ?? 0).toLocaleString() : "—"} remaining
+                </span>
+              </div>
+              <Progress
+                value={credits && credits.planIncluded > 0 ? Math.min(100, (credits.used / credits.planIncluded) * 100) : 0}
+                className="h-1.5"
+              />
+              <div className="flex items-center justify-between mt-1.5">
+                <p className="text-xs text-muted-foreground">
+                  {credits ? `${credits.used.toLocaleString()} used · ${credits.planIncluded.toLocaleString()} included` : "Loading…"}
+                </p>
+                <p className="text-xs text-muted-foreground group-hover:text-primary transition-colors flex items-center gap-0.5">
+                  Buy more <ArrowRight className="h-3 w-3" />
+                </p>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {!isSuperAdmin && org?.plan === "free" && (
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.28 }}
+          className="glass-card p-4 cursor-pointer group border-dashed"
+          onClick={() => navTo("/dashboard/billing")}
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted">
+              <Bot className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold">Unlock AI Features</p>
+              <p className="text-xs text-muted-foreground">Upgrade to Starter for 300 AI Actions/month</p>
+            </div>
+            <Button size="sm" variant="outline" className="ml-auto shrink-0 gap-1">
+              Upgrade <ArrowRight className="h-3 w-3" />
+            </Button>
+          </div>
+        </motion.div>
+      )}
 
       {/* ── Charts Row ────────────────────────────────────────────── */}
       <div className="grid gap-6 lg:grid-cols-3">

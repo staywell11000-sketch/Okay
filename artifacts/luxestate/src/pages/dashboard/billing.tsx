@@ -10,7 +10,7 @@ import { Progress } from "@/components/ui/progress"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { CheckCircle2, Clock, XCircle, Zap, CreditCard, Package, AlertTriangle, TrendingUp, ImagePlus, X, Loader2 } from "lucide-react"
+import { CheckCircle2, Clock, XCircle, Zap, CreditCard, Package, AlertTriangle, TrendingUp, ImagePlus, X, Loader2, Sparkles, Bot } from "lucide-react"
 import { format } from "date-fns"
 
 const PLAN_COLORS: Record<string, string> = {
@@ -21,12 +21,18 @@ const PLAN_COLORS: Record<string, string> = {
 }
 
 const PLAN_FEATURES: Record<string, string[]> = {
-  starter: ["1 User", "500 Leads/mo", "1 WhatsApp Number", "1 Facebook Page", "2 GB Storage", "Basic Analytics"],
-  professional: ["5 Users", "5,000 Leads/mo", "3 WhatsApp Numbers", "3 Facebook Pages", "20 GB Storage", "Advanced Analytics", "Team Management", "Deals Pipeline", "Facebook/Instagram Sync"],
-  agency: ["Unlimited Users", "Unlimited Leads", "Unlimited WhatsApp", "Unlimited Facebook", "100 GB Storage", "All Professional Features", "AI Intelligence", "Automations", "Priority Support"],
+  starter: ["1 User", "500 Leads/mo", "1 WhatsApp Number", "1 Facebook Page", "2 GB Storage", "Basic Analytics", "300 AI Actions/mo", "AI Lead Summaries", "AI Reply Suggestions"],
+  professional: ["5 Users", "5,000 Leads/mo", "3 WhatsApp Numbers", "3 Facebook Pages", "20 GB Storage", "Advanced Analytics", "Team Management", "Deals Pipeline", "Facebook/Instagram Sync", "1,500 AI Actions/mo", "AI Chatbot"],
+  agency: ["Unlimited Users", "Unlimited Leads", "Unlimited WhatsApp", "Unlimited Facebook", "100 GB Storage", "All Professional Features", "10,000 AI Actions/mo", "AI Intelligence Suite", "AI Automation", "Priority Support"],
 }
 
-const AI_LIMITS: Record<string, number> = { starter: 100, professional: 1000, agency: 5000 }
+const AI_PLAN_ACTIONS: Record<string, number> = { free: 0, trial: 50, starter: 300, professional: 1500, agency: 10000 }
+
+const AI_BOOSTERS = [
+  { slug: "ai_booster_500",  label: "AI Booster 500",   actions: 500,   price: 2000,  popular: false },
+  { slug: "ai_booster_2000", label: "AI Booster 2,000", actions: 2000,  price: 6000,  popular: true  },
+  { slug: "ai_booster_5000", label: "AI Booster 5,000", actions: 5000,  price: 12000, popular: false },
+]
 
 function objectPathToUrl(objectPath: string): string {
   return objectPath.replace(/^\/objects/, `${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/storage/objects`)
@@ -108,7 +114,7 @@ function ScreenshotUploader({ value, onChange }: { value: File | null; onChange:
   )
 }
 
-function SubmitPaymentDialog({ title, plan, amount, onSuccess }: { title: string; plan: string; amount: number; onSuccess: () => void }) {
+function SubmitPaymentDialog({ title, plan, amount, onSuccess, variant = "default" }: { title: string; plan: string; amount: number; onSuccess: () => void; variant?: "default" | "outline" }) {
   const [open, setOpen] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [notes, setNotes] = useState("")
@@ -147,11 +153,12 @@ function SubmitPaymentDialog({ title, plan, amount, onSuccess }: { title: string
   })
 
   const isPending = mutation.isPending || uploading
+  const planLabel = plan.startsWith("ai_booster_") ? plan.replace("ai_booster_", "AI Booster ").replace(/_/g, ",") : plan.replace(/_/g, " ")
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!isPending) { setOpen(v); if (!v) reset() } }}>
       <DialogTrigger asChild>
-        <Button size="sm">{title}</Button>
+        <Button size="sm" variant={variant}>{title}</Button>
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>
@@ -162,24 +169,21 @@ function SubmitPaymentDialog({ title, plan, amount, onSuccess }: { title: string
         </DialogHeader>
 
         <div className="space-y-4 py-1">
-          {/* Bank details */}
           <div className="rounded-xl bg-muted p-4 text-sm space-y-1.5">
             <p className="font-semibold text-foreground">Bank Transfer Details</p>
             <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-muted-foreground">
               <span className="font-medium text-foreground/70">Account</span><span>LuxeState CRM</span>
               <span className="font-medium text-foreground/70">Bank</span><span>HBL / Easypaisa / JazzCash</span>
               <span className="font-medium text-foreground/70">Amount</span><span className="font-semibold text-foreground">Rs. {amount.toLocaleString()}</span>
-              <span className="font-medium text-foreground/70">Plan</span><span className="capitalize">{plan.replace("addon_", "Add-on: ").replace(/_/g, " ")}</span>
+              <span className="font-medium text-foreground/70">For</span><span className="capitalize">{planLabel}</span>
             </div>
           </div>
 
-          {/* Screenshot upload */}
           <div className="space-y-1.5">
             <Label>Payment Screenshot <span className="text-muted-foreground font-normal">(recommended)</span></Label>
             <ScreenshotUploader value={file} onChange={setFile} />
           </div>
 
-          {/* Notes */}
           <div className="space-y-1.5">
             <Label htmlFor="notes">Notes <span className="text-muted-foreground font-normal">(optional)</span></Label>
             <Textarea
@@ -225,11 +229,11 @@ export default function BillingPage() {
   })
 
   const payments = paymentsData?.data ?? []
-  const plans = (plansData?.plans ?? []).filter((p: any) => p.slug !== "trial")
+  const plans = (plansData?.plans ?? []).filter((p: any) => p.slug !== "trial" && p.slug !== "free")
 
-  const aiUsedPercent = credits
-    ? Math.min(100, ((credits.used) / (credits.planIncluded || 1)) * 100)
-    : 0
+  const actionsUsed = credits?.used ?? 0
+  const actionsTotal = credits?.planIncluded ?? 0
+  const aiUsedPercent = actionsTotal > 0 ? Math.min(100, (actionsUsed / actionsTotal) * 100) : 0
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["payments-mine"] })
@@ -241,7 +245,7 @@ export default function BillingPage() {
     <div className="space-y-8 p-6 max-w-5xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Billing & Subscription</h1>
-        <p className="text-muted-foreground">Manage your plan, AI credits, and payment history.</p>
+        <p className="text-muted-foreground">Manage your plan, AI Actions, and payment history.</p>
       </div>
 
       {/* Current Plan */}
@@ -250,7 +254,7 @@ export default function BillingPage() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-base">Current Plan</CardTitle>
             {org && (
-              <Badge className={`${PLAN_COLORS[org.plan]} text-white capitalize`}>
+              <Badge className={`${PLAN_COLORS[org.plan] ?? "bg-gray-500"} text-white capitalize`}>
                 {org.planName || org.plan}
               </Badge>
             )}
@@ -278,8 +282,8 @@ export default function BillingPage() {
                   <p className="font-medium mt-1">{org.maxUsers ?? "Unlimited"}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide">AI Requests</p>
-                  <p className="font-medium mt-1">{AI_LIMITS[org.plan] ?? 30}/mo</p>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">AI Actions</p>
+                  <p className="font-medium mt-1">{(AI_PLAN_ACTIONS[org.plan] ?? 0).toLocaleString()}/mo</p>
                 </div>
               </div>
               {org.isSuspended && (
@@ -293,82 +297,111 @@ export default function BillingPage() {
         </CardContent>
       </Card>
 
-      {/* AI Credits */}
+      {/* AI Actions Usage */}
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
             <Zap className="h-4 w-4 text-yellow-500" />
-            <CardTitle className="text-base">AI Credits</CardTitle>
+            <CardTitle className="text-base">AI Actions</CardTitle>
           </div>
-          <CardDescription>Monthly AI request allowance + purchased add-ons</CardDescription>
+          <CardDescription>Monthly AI Actions allowance — resets every month. Bonus Actions never expire.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {isSuperAdmin ? (
-            <p className="text-sm text-muted-foreground">Super Admin — unlimited AI access.</p>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Sparkles className="h-4 w-4 text-primary" />
+              Super Admin — unlimited AI access for testing.
+            </div>
+          ) : org?.plan === "free" ? (
+            <div className="rounded-lg bg-muted p-4 text-sm space-y-2">
+              <p className="font-medium">AI features are not available on the Free plan.</p>
+              <p className="text-muted-foreground">Upgrade to Starter to unlock 300 AI Actions per month.</p>
+            </div>
           ) : credits ? (
             <>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span>Plan Allowance Used</span>
-                  <span className="font-medium">{credits.used} / {credits.planIncluded}</span>
+                  <span className="font-medium">{actionsUsed.toLocaleString()} / {actionsTotal.toLocaleString()} Actions</span>
                 </div>
-                <Progress value={aiUsedPercent} className="h-2" />
+                <Progress value={aiUsedPercent} className="h-2.5" />
               </div>
-              <div className="grid grid-cols-3 gap-3 text-sm">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                <div className="rounded-lg bg-muted p-3">
+                  <p className="text-muted-foreground text-xs">Actions Used</p>
+                  <p className="font-bold text-lg mt-1">{actionsUsed.toLocaleString()}</p>
+                </div>
                 <div className="rounded-lg bg-muted p-3">
                   <p className="text-muted-foreground text-xs">Plan Remaining</p>
-                  <p className="font-bold text-lg mt-1">{credits.remainingPlan}</p>
+                  <p className="font-bold text-lg mt-1">{(credits.remainingPlan ?? 0).toLocaleString()}</p>
                 </div>
                 <div className="rounded-lg bg-muted p-3">
-                  <p className="text-muted-foreground text-xs">Add-On Credits</p>
-                  <p className="font-bold text-lg mt-1">{credits.addonRemaining}</p>
+                  <p className="text-muted-foreground text-xs">Bonus Actions</p>
+                  <p className="font-bold text-lg mt-1 text-purple-600">{(credits.bonusActions ?? 0).toLocaleString()}</p>
                 </div>
-                <div className="rounded-lg bg-muted p-3">
+                <div className="rounded-lg bg-primary/10 border border-primary/20 p-3">
                   <p className="text-muted-foreground text-xs">Total Available</p>
-                  <p className="font-bold text-lg mt-1">{(credits.available ?? 0)}</p>
+                  <p className="font-bold text-lg mt-1 text-primary">{(credits.available ?? 0).toLocaleString()}</p>
                 </div>
               </div>
               {(credits.available ?? 0) === 0 && (
                 <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4" />
-                  You have reached your monthly AI limit. Purchase add-on credits below.
+                  You have used all your AI Actions. Purchase an AI Booster below or upgrade your plan.
                 </div>
               )}
-              {credits.resetAt && (
-                <p className="text-xs text-muted-foreground">Resets monthly · Last reset: {format(new Date(credits.resetAt), "MMM d, yyyy")}</p>
-              )}
+              <p className="text-xs text-muted-foreground">
+                Plan Actions reset monthly · Bonus Actions carry over until consumed
+              </p>
             </>
           ) : (
-            <p className="text-sm text-muted-foreground">Loading credits...</p>
+            <p className="text-sm text-muted-foreground">Loading AI Actions...</p>
           )}
         </CardContent>
       </Card>
 
-      {/* AI Add-On Store */}
+      {/* AI Booster Store */}
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
-            <Package className="h-4 w-4 text-primary" />
-            <CardTitle className="text-base">AI Add-On Store</CardTitle>
+            <Bot className="h-4 w-4 text-purple-500" />
+            <CardTitle className="text-base">AI Booster Store</CardTitle>
           </div>
-          <CardDescription>Purchase additional AI request credits</CardDescription>
+          <CardDescription>Top up with extra AI Actions — added instantly to your Bonus Actions pool. Never expire.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <div className="space-y-1">
-              <p className="font-semibold">Extra AI Pack</p>
-              <p className="text-sm text-muted-foreground">+500 AI Requests · No expiry</p>
-            </div>
-            <div className="flex items-center gap-4">
-              <p className="font-bold text-lg">Rs. 2,000</p>
-              <SubmitPaymentDialog
-                title="Purchase"
-                plan="addon_ai_requests"
-                amount={2000}
-                onSuccess={refresh}
-              />
-            </div>
+          <div className="grid md:grid-cols-3 gap-4">
+            {AI_BOOSTERS.map(booster => (
+              <div
+                key={booster.slug}
+                className={`relative rounded-xl border p-4 space-y-3 ${booster.popular ? "border-purple-500 ring-1 ring-purple-500" : ""}`}
+              >
+                {booster.popular && (
+                  <div className="absolute -top-2.5 left-1/2 -translate-x-1/2">
+                    <Badge className="bg-purple-500 text-white text-xs px-2">Most Popular</Badge>
+                  </div>
+                )}
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="font-semibold">{booster.label}</p>
+                    <p className="text-sm text-muted-foreground">+{booster.actions.toLocaleString()} AI Actions</p>
+                  </div>
+                  <Zap className="h-5 w-5 text-yellow-500 shrink-0" />
+                </div>
+                <div className="text-xl font-bold">Rs. {booster.price.toLocaleString()}</div>
+                <SubmitPaymentDialog
+                  title="Buy Booster"
+                  plan={booster.slug}
+                  amount={booster.price}
+                  onSuccess={refresh}
+                  variant={booster.popular ? "default" : "outline"}
+                />
+              </div>
+            ))}
           </div>
+          <p className="text-xs text-muted-foreground mt-4">
+            Booster Actions are added to your account after payment confirmation (within 24 hours). They carry over month-to-month.
+          </p>
         </CardContent>
       </Card>
 
@@ -431,19 +464,28 @@ export default function BillingPage() {
             <p className="text-sm text-muted-foreground text-center py-6">No payment requests yet.</p>
           ) : (
             <div className="space-y-2">
-              {payments.map((p: any) => (
-                <div key={p.id} className="flex items-center justify-between rounded-lg border p-3">
-                  <div className="space-y-0.5">
-                    <p className="text-sm font-medium capitalize">{p.plan.replace("addon_", "Add-On: ").replace(/_/g, " ")}</p>
-                    <p className="text-xs text-muted-foreground">{format(new Date(p.submitted_at), "MMM d, yyyy · h:mm a")}</p>
-                    {p.rejection_reason && <p className="text-xs text-destructive mt-1">Reason: {p.rejection_reason}</p>}
+              {payments.map((p: any) => {
+                const isBooster = p.plan?.startsWith("ai_booster_")
+                const planLabel = isBooster
+                  ? p.plan.replace("ai_booster_", "AI Booster ").replace(/_/g, ",")
+                  : p.plan.replace("addon_", "Add-On: ").replace(/_/g, " ")
+                return (
+                  <div key={p.id} className="flex items-center justify-between rounded-lg border p-3">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        {isBooster && <Zap className="h-3.5 w-3.5 text-yellow-500" />}
+                        <p className="text-sm font-medium capitalize">{planLabel}</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{format(new Date(p.submitted_at), "MMM d, yyyy · h:mm a")}</p>
+                      {p.rejection_reason && <p className="text-xs text-destructive mt-1">Reason: {p.rejection_reason}</p>}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-semibold">Rs. {Number(p.amount).toLocaleString()}</span>
+                      <StatusBadge status={p.status} />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-semibold">Rs. {Number(p.amount).toLocaleString()}</span>
-                    <StatusBadge status={p.status} />
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </CardContent>

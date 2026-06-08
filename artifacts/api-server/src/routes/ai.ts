@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, leadsTable, activities, deals, messages, conversations, aiUsageLogs, properties } from "@workspace/db";
 import { eq, desc, inArray, and, or, isNull, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
-import { requireAiCredits, consumeAiCredit } from "../middlewares/requireAiCredits";
+import { requireAiCredits, consumeAiActions, AI_ACTION_COSTS, PLAN_AI_ACTIONS, getOrCreateUsageRow } from "../middlewares/requireAiCredits";
 import { openai } from "../lib/openai";
 import { fireTrigger } from "../services/automationEngine";
 
@@ -20,7 +20,6 @@ async function logUsage(
 ) {
   if (!usage) return;
   try {
-    // Legacy log
     await db.insert(aiUsageLogs).values({
       userId,
       operation,
@@ -28,11 +27,13 @@ async function logUsage(
       inputTokens: usage.prompt_tokens,
       outputTokens: usage.completion_tokens,
     });
-    // Credit deduction + new ai_usage log
     if (orgId) {
+      const actionCost = AI_ACTION_COSTS[operation] ?? 1;
       const totalTokens = usage.prompt_tokens + usage.completion_tokens;
-      const estimatedCost = usage.prompt_tokens * PRICE_INPUT_PER_TOKEN + usage.completion_tokens * PRICE_OUTPUT_PER_TOKEN;
-      await consumeAiCredit(orgId, userId, operation, {
+      const estimatedCost =
+        usage.prompt_tokens * PRICE_INPUT_PER_TOKEN +
+        usage.completion_tokens * PRICE_OUTPUT_PER_TOKEN;
+      await consumeAiActions(orgId, userId, operation, actionCost, {
         prompt_tokens: usage.prompt_tokens,
         completion_tokens: usage.completion_tokens,
         total_tokens: totalTokens,
@@ -114,7 +115,7 @@ Return ONLY a valid JSON object with these exact fields:
 const ownsLead = (userId: string) =>
   or(eq(leadsTable.createdById, userId), isNull(leadsTable.createdById));
 
-router.post("/ai/analyze-lead/:id", requireAuth, async (req, res) => {
+router.post("/ai/analyze-lead/:id", requireAuth, requireAiCredits, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const userId = (req as any).userId as string;
   if (isNaN(id)) return void res.status(400).json({ error: "Invalid ID" });
@@ -166,7 +167,7 @@ router.post("/ai/analyze-lead/:id", requireAuth, async (req, res) => {
       : null;
 
     const { analysis, usage } = await analyzeLeadWithAI({ lead, recentMessages, recentActivities, dealInfo });
-    await logUsage(userId, undefined, "analyze-lead", usage);
+    await logUsage(userId, (req as any).orgId, "analyze-lead", usage);
 
     const [updated] = await db
       .update(leadsTable)
@@ -199,7 +200,7 @@ router.post("/ai/analyze-lead/:id", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/ai/analyze-all", requireAuth, async (req, res) => {
+router.post("/ai/analyze-all", requireAuth, requireAiCredits, async (req, res) => {
   const userId = (req as any).userId as string;
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -241,7 +242,7 @@ router.post("/ai/analyze-all", requireAuth, async (req, res) => {
         const { analysis, usage } = await analyzeLeadWithAI({
           lead, recentMessages: [], recentActivities, dealInfo,
         });
-        await logUsage(userId, undefined, "analyze-all", usage);
+        await logUsage(userId, (req as any).orgId, "analyze-all", usage);
 
         await db
           .update(leadsTable)
@@ -279,7 +280,7 @@ router.post("/ai/analyze-all", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/ai/sales-insights", requireAuth, async (req, res) => {
+router.post("/ai/sales-insights", requireAuth, requireAiCredits, async (req, res) => {
   const userId = (req as any).userId as string;
   try {
     const allLeads = await db
@@ -350,7 +351,7 @@ Return ONLY a valid JSON object:
       response_format: { type: "json_object" },
     });
 
-    await logUsage(userId, undefined, "sales-insights", response.usage);
+    await logUsage(userId, (req as any).orgId, "sales-insights", response.usage);
 
     const content = response.choices[0]?.message?.content ?? "{}";
     const insights = JSON.parse(content);
@@ -362,7 +363,7 @@ Return ONLY a valid JSON object:
   }
 });
 
-router.post("/ai/conversation-summary/:leadId", requireAuth, async (req, res) => {
+router.post("/ai/conversation-summary/:leadId", requireAuth, requireAiCredits, async (req, res) => {
   const leadId = parseInt(req.params.leadId as string, 10);
   const userId = (req as any).userId as string;
   if (isNaN(leadId)) return void res.status(400).json({ error: "Invalid lead ID" });
@@ -430,7 +431,7 @@ Return ONLY valid JSON:
       response_format: { type: "json_object" },
     });
 
-    await logUsage(userId, undefined, "conversation-summary", response.usage);
+    await logUsage(userId, (req as any).orgId, "conversation-summary", response.usage);
     res.json(JSON.parse(response.choices[0]?.message?.content ?? "{}"));
   } catch (err) {
     console.error("Conversation summary error:", err);
@@ -439,7 +440,7 @@ Return ONLY valid JSON:
 });
 
 // ── AI Chat ───────────────────────────────────────────────────────────────────
-router.post("/ai/chat", requireAuth, async (req, res) => {
+router.post("/ai/chat", requireAuth, requireAiCredits, async (req, res) => {
   const userId = (req as any).userId as string;
   const { messages: chatMessages } = req.body as {
     messages: { role: "user" | "assistant"; content: string }[];
@@ -502,7 +503,7 @@ Be concise and actionable. Answer in 2-4 sentences unless a detailed breakdown i
       ],
     });
 
-    await logUsage(userId, undefined, "chat", response.usage);
+    await logUsage(userId, (req as any).orgId, "chat", response.usage);
 
     const reply = response.choices[0]?.message?.content ?? "Sorry, I couldn't generate a response.";
     res.json({ reply });
@@ -605,8 +606,77 @@ router.get("/ai/usage", requireAuth, async (req, res) => {
   }
 });
 
+// ── GET /ai/credits — AI Actions balance for current user ─────────────────
+router.get("/ai/credits", requireAuth, async (req, res) => {
+  const userId = (req as any).userId as string;
+  const userEmail = (req as any).userEmail as string | undefined;
+  const SUPER_ADMIN_EMAIL = "murtazaarshad499@gmail.com";
+
+  if (userEmail === SUPER_ADMIN_EMAIL) {
+    return res.json({
+      isSuperAdmin: true,
+      planIncluded: 999999,
+      used: 0,
+      remainingPlan: 999999,
+      bonusActions: 0,
+      addonRemaining: 0,
+      available: 999999,
+    });
+  }
+
+  try {
+    const isSuperAdminRow = await db.execute(sql`SELECT role FROM users WHERE id = ${userId}`);
+    if ((isSuperAdminRow.rows[0] as any)?.role === "super_admin") {
+      return res.json({
+        isSuperAdmin: true,
+        planIncluded: 999999,
+        used: 0,
+        remainingPlan: 999999,
+        bonusActions: 0,
+        addonRemaining: 0,
+        available: 999999,
+      });
+    }
+
+    const orgRow = await db.execute(sql`
+      SELECT o.id, o.plan FROM organizations o
+      WHERE o.owner_id = ${userId}
+         OR o.id = (SELECT organization_id FROM users WHERE id = ${userId})
+      LIMIT 1
+    `);
+
+    if (!orgRow.rows.length) {
+      return res.json({ planIncluded: 0, used: 0, remainingPlan: 0, bonusActions: 0, addonRemaining: 0, available: 0 });
+    }
+
+    const org = orgRow.rows[0] as any;
+    const usage = await getOrCreateUsageRow(org.id, org.plan);
+    const actionsUsed   = Number(usage.actions_used  ?? 0);
+    const actionsLimit  = Number(usage.actions_limit ?? 0);
+    const bonusActions  = Number(usage.bonus_actions ?? 0);
+    const remainingPlan = Math.max(0, actionsLimit - actionsUsed);
+    const available     = remainingPlan + bonusActions;
+
+    return res.json({
+      isSuperAdmin: false,
+      planIncluded: actionsLimit,
+      used: actionsUsed,
+      remainingPlan,
+      bonusActions,
+      addonRemaining: bonusActions,
+      available,
+      plan: org.plan,
+      month: usage.month,
+      year: usage.year,
+    });
+  } catch (err) {
+    console.error("AI credits error:", err);
+    return res.status(500).json({ error: "Failed to fetch AI Actions balance" });
+  }
+});
+
 // ── POST /reply-suggestions ───────────────────────────────────────────────────
-router.post("/reply-suggestions", requireAuth, async (req, res) => {
+router.post("/reply-suggestions", requireAuth, requireAiCredits, async (req, res) => {
   const userId = (req as any).userId;
   const { conversationId } = req.body;
 
@@ -664,7 +734,7 @@ Return JSON: { "suggestions": ["reply1", "reply2", "reply3"] }`,
     });
 
     const parsed = JSON.parse(completion.choices[0].message.content ?? "{}");
-    await logUsage(userId, undefined, "reply-suggestions", completion.usage);
+    await logUsage(userId, (req as any).orgId, "reply-suggestions", completion.usage);
 
     return res.json({
       suggestions: parsed.suggestions ?? [
@@ -680,7 +750,7 @@ Return JSON: { "suggestions": ["reply1", "reply2", "reply3"] }`,
 });
 
 // ── POST /deal-insights ───────────────────────────────────────────────────────
-router.post("/deal-insights", requireAuth, async (req, res) => {
+router.post("/deal-insights", requireAuth, requireAiCredits, async (req, res) => {
   const userId = (req as any).userId;
   try {
     const dealsData = await db.select().from(deals)
@@ -717,7 +787,7 @@ router.post("/deal-insights", requireAuth, async (req, res) => {
     });
 
     const parsed = JSON.parse(completion.choices[0].message.content ?? "{}");
-    await logUsage(userId, undefined, "deal-insights", completion.usage);
+    await logUsage(userId, (req as any).orgId, "deal-insights", completion.usage);
     return res.json({ insights: parsed });
   } catch (err) {
     console.error("Deal insights error:", err);
@@ -726,7 +796,7 @@ router.post("/deal-insights", requireAuth, async (req, res) => {
 });
 
 // ── POST /business-insights ───────────────────────────────────────────────────
-router.post("/business-insights", requireAuth, async (req, res) => {
+router.post("/business-insights", requireAuth, requireAiCredits, async (req, res) => {
   const userId = (req as any).userId;
   const period = (req.body?.period ?? "weekly") as "daily" | "weekly" | "monthly";
 
@@ -774,7 +844,7 @@ Lead Sources: ${Array.from(new Set(leadsData.map((l: any) => l.source).filter(Bo
     });
 
     const parsed = JSON.parse(completion.choices[0].message.content ?? "{}");
-    await logUsage(userId, undefined, "business-insights", completion.usage);
+    await logUsage(userId, (req as any).orgId, "business-insights", completion.usage);
     return res.json({ insights: parsed, period });
   } catch (err) {
     console.error("Business insights error:", err);
@@ -783,7 +853,7 @@ Lead Sources: ${Array.from(new Set(leadsData.map((l: any) => l.source).filter(Bo
 });
 
 // ── POST /risk-detection ──────────────────────────────────────────────────────
-router.post("/risk-detection", requireAuth, async (req, res) => {
+router.post("/risk-detection", requireAuth, requireAiCredits, async (req, res) => {
   const userId = (req as any).userId;
   try {
     const [leadsData, dealsData] = await Promise.all([
@@ -828,7 +898,7 @@ Stalled deals (7+ days no update): ${stalledDeals.length} — ${stalledDeals.sli
     parsed.uncontactedLeads = parsed.uncontactedLeads ?? uncontacted;
     parsed.coldLeads = parsed.coldLeads ?? coldLeads;
     parsed.stalledDeals = parsed.stalledDeals ?? stalledDeals;
-    await logUsage(userId, undefined, "risk-detection", completion.usage);
+    await logUsage(userId, (req as any).orgId, "risk-detection", completion.usage);
     return res.json({ risks: parsed });
   } catch (err) {
     console.error("Risk detection error:", err);
@@ -837,7 +907,7 @@ Stalled deals (7+ days no update): ${stalledDeals.length} — ${stalledDeals.sli
 });
 
 // ── POST /property-matching/:leadId ───────────────────────────────────────────
-router.post("/property-matching/:leadId", requireAuth, async (req, res) => {
+router.post("/property-matching/:leadId", requireAuth, requireAiCredits, async (req, res) => {
   const userId = (req as any).userId;
   const leadId = Number(req.params.leadId);
   try {
@@ -874,7 +944,7 @@ Rank by match score descending. Return top 5 matches max.`,
     });
 
     const parsed = JSON.parse(completion.choices[0].message.content ?? "{}");
-    await logUsage(userId, undefined, "property-matching", completion.usage);
+    await logUsage(userId, (req as any).orgId, "property-matching", completion.usage);
     return res.json({ matches: parsed.matches ?? [], summary: parsed.summary });
   } catch (err) {
     console.error("Property matching error:", err);
@@ -884,7 +954,6 @@ Rank by match score descending. Return top 5 matches max.`,
 
 // ── GET /admin/ai-stats — super admin AI usage overview ───────────────────
 router.get("/admin/ai-stats", requireAuth, async (req, res) => {
-  const { requireSuperAdmin } = await import("../middlewares/requireSuperAdmin");
   const userEmail = (req as any).userEmail;
   if (userEmail !== "murtazaarshad499@gmail.com") {
     const userId = (req as any).userId;
@@ -894,32 +963,64 @@ router.get("/admin/ai-stats", requireAuth, async (req, res) => {
     }
   }
   try {
-    const totals = await db.execute(sql`
-      SELECT
-        COUNT(*) as total_requests,
-        COALESCE(SUM(total_tokens), 0) as total_tokens,
-        COALESCE(SUM(estimated_cost), 0) as total_cost
-      FROM ai_usage
-    `);
-    const byOrg = await db.execute(sql`
-      SELECT au.organization_id, o.name as org_name,
-             COUNT(*) as requests,
-             COALESCE(SUM(au.total_tokens), 0) as total_tokens,
-             COALESCE(SUM(au.estimated_cost), 0) as cost
-      FROM ai_usage au
-      LEFT JOIN organizations o ON o.id = au.organization_id
-      GROUP BY au.organization_id, o.name
-      ORDER BY cost DESC
-      LIMIT 20
-    `);
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+
+    const [totals, byOrg, actionsThisMonth, topFeatures, boosterRevenue] = await Promise.all([
+      db.execute(sql`
+        SELECT COUNT(*) as total_requests, COALESCE(SUM(total_tokens),0) as total_tokens, COALESCE(SUM(estimated_cost),0) as total_cost
+        FROM ai_usage
+      `),
+      db.execute(sql`
+        SELECT oau.organization_id, o.name as org_name, o.plan,
+               oau.actions_used, oau.actions_limit, oau.bonus_actions,
+               (oau.actions_used + oau.bonus_actions) as total_consumed
+        FROM organization_ai_usage oau
+        LEFT JOIN organizations o ON o.id = oau.organization_id
+        WHERE oau.month = ${month} AND oau.year = ${year}
+        ORDER BY total_consumed DESC
+        LIMIT 20
+      `),
+      db.execute(sql`
+        SELECT COALESCE(SUM(actions_used),0) as total_actions_used,
+               COALESCE(SUM(bonus_actions),0) as total_bonus_remaining,
+               COUNT(DISTINCT organization_id) as active_orgs
+        FROM organization_ai_usage
+        WHERE month = ${month} AND year = ${year}
+      `),
+      db.execute(sql`
+        SELECT feature, COUNT(*) as calls
+        FROM ai_usage
+        WHERE created_at >= DATE_TRUNC('month', NOW())
+        GROUP BY feature ORDER BY calls DESC LIMIT 10
+      `),
+      db.execute(sql`
+        SELECT COALESCE(SUM(amount),0) as total_revenue, COUNT(*) as total_sales
+        FROM payment_requests
+        WHERE plan LIKE 'ai_booster_%' AND status = 'approved'
+      `),
+    ]);
+
     const t = totals.rows[0] as any;
-    const orgCount = byOrg.rows.length || 1;
+    const am = actionsThisMonth.rows[0] as any;
+    const br = boosterRevenue.rows[0] as any;
+
     return res.json({
       total_requests: Number(t.total_requests),
       total_tokens: Number(t.total_tokens),
-      total_cost: Number(t.total_cost),
-      avg_cost_per_org: Number(t.total_cost) / orgCount,
-      by_org: byOrg.rows,
+      total_cost_usd: Number(t.total_cost),
+      this_month: {
+        actions_used: Number(am.total_actions_used),
+        bonus_remaining: Number(am.total_bonus_remaining),
+        active_orgs: Number(am.active_orgs),
+      },
+      booster_revenue: {
+        total_pkr: Number(br.total_revenue),
+        total_sales: Number(br.total_sales),
+      },
+      top_orgs_by_usage: byOrg.rows,
+      top_features: topFeatures.rows,
     });
   } catch (err) {
     return res.status(500).json({ error: "Server error" });

@@ -25,10 +25,13 @@ export interface AiCredits {
   planIncluded: number;
   used: number;
   remainingPlan: number;
+  bonusActions: number;
   addonRemaining: number;
   available: number | null;
   isSuperAdmin: boolean;
   resetAt: string | null;
+  month?: number;
+  year?: number;
 }
 
 interface PlanContextValue {
@@ -97,10 +100,13 @@ export function PlanProvider({ children }: { children: ReactNode }) {
         planIncluded: creditsData.planIncluded ?? 0,
         used: creditsData.used ?? 0,
         remainingPlan: creditsData.remainingPlan ?? 0,
-        addonRemaining: creditsData.addonRemaining ?? 0,
+        bonusActions: creditsData.bonusActions ?? 0,
+        addonRemaining: creditsData.addonRemaining ?? creditsData.bonusActions ?? 0,
         available: creditsData.available ?? null,
         isSuperAdmin: creditsData.isSuperAdmin ?? false,
         resetAt: creditsData.resetAt ?? null,
+        month: creditsData.month,
+        year: creditsData.year,
       }
     : null;
 

@@ -4,6 +4,7 @@ import { requireSuperAdmin } from "../middlewares/requireSuperAdmin";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { isAiBooster, AI_BOOSTER_PACKS, addBonusActions } from "../middlewares/requireAiCredits";
 
 const router = Router();
 
@@ -83,12 +84,29 @@ router.post("/admin/payments/:id/approve", requireAuth, requireSuperAdmin, async
     const pr = await db.execute(sql`SELECT * FROM payment_requests WHERE id = ${parseInt(id)}`);
     if (!pr.rows.length) return res.status(404).json({ error: "Not found" });
     const request = pr.rows[0] as any;
-    const endDate = new Date();
-    endDate.setDate(endDate.getDate() + 30 * Number(months));
+
     await db.execute(sql`
       UPDATE payment_requests SET status = 'approved', approved_at = NOW(), approved_by = ${actorId}, updated_at = NOW()
       WHERE id = ${parseInt(id)}
     `);
+
+    // AI Booster purchase — add bonus_actions instead of changing plan
+    if (isAiBooster(request.plan)) {
+      const pack = AI_BOOSTER_PACKS[request.plan];
+      if (pack) {
+        await addBonusActions(request.organization_id, pack.actions);
+      }
+      await db.execute(sql`
+        INSERT INTO audit_logs (actor_id, actor_email, action, entity_type, entity_id, organization_id, meta, created_at)
+        VALUES (${actorId}, ${actorEmail}, 'payment.approved', 'payment_request', ${id},
+                ${request.organization_id}, ${JSON.stringify({ plan: request.plan, amount: request.amount, booster: true, actions: AI_BOOSTER_PACKS[request.plan]?.actions })}, NOW())
+      `);
+      return res.json({ success: true, booster: true, actions: AI_BOOSTER_PACKS[request.plan]?.actions });
+    }
+
+    // Regular plan upgrade
+    const endDate = new Date();
+    endDate.setDate(endDate.getDate() + 30 * Number(months));
     await db.execute(sql`
       UPDATE organizations SET
         plan = ${request.plan},

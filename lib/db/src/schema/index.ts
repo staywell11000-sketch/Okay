@@ -29,3 +29,4 @@ export * from "./user_permissions";
 export * from "./invitations";
 export * from "./support_tickets";
 export * from "./support_messages";
+export * from "./organization_ai_usage";

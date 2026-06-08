@@ -391,8 +391,14 @@ function ModulesTab({ plan, isSuperAdmin, onSwitchTab }: { plan: string; isSuper
         const data = await res.json()
         setResults(prev => ({ ...prev, [module.id]: data }))
       }
-    } catch {
-      setResults(prev => ({ ...prev, [module.id]: { error: "Analysis failed. Please try again." } }))
+    } catch (err: any) {
+      const msg = err?.message?.toLowerCase?.() ?? ""
+      const errorText = msg.includes("action") || msg.includes("exhausted") || msg.includes("limit")
+        ? "AI Actions exhausted. Purchase a Booster or upgrade your plan."
+        : msg.includes("upgrade") || msg.includes("plan")
+        ? "Upgrade your plan to access this AI feature."
+        : "AI service temporarily unavailable. Please try again."
+      setResults(prev => ({ ...prev, [module.id]: { error: errorText } }))
     } finally {
       setLoading(null)
     }
@@ -494,9 +500,18 @@ function AIChatTab({ plan, isSuperAdmin }: { plan: string; isSuperAdmin: boolean
         body: JSON.stringify({ messages: payload }),
       })
       const data = await res.json()
-      setMessages(prev => [...prev, { role: "assistant", content: data.reply ?? "Sorry, I couldn't respond.", ts: new Date() }])
+      if (!res.ok) {
+        const errMsg = data.error === "ai_actions_exhausted"
+          ? "AI Actions exhausted. Purchase a Booster or upgrade your plan."
+          : data.error === "ai_plan_upgrade_required"
+          ? "Upgrade your plan to use AI Chat."
+          : "AI service temporarily unavailable."
+        setMessages(prev => [...prev, { role: "assistant", content: errMsg, ts: new Date() }])
+      } else {
+        setMessages(prev => [...prev, { role: "assistant", content: data.reply ?? "Sorry, I couldn't respond.", ts: new Date() }])
+      }
     } catch {
-      setMessages(prev => [...prev, { role: "assistant", content: "Connection error. Please try again.", ts: new Date() }])
+      setMessages(prev => [...prev, { role: "assistant", content: "AI service temporarily unavailable. Please try again.", ts: new Date() }])
     } finally {
       setLoading(false)
     }
