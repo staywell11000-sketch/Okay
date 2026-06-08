@@ -176,22 +176,77 @@ router.post("/admin/organizations/:id/unsuspend", requireAuth, requireSuperAdmin
   }
 });
 
-router.get("/admin/stats", requireAuth, requireSuperAdmin, async (req, res) => {
+router.get("/admin/stats", requireAuth, requireSuperAdmin, async (_req, res) => {
   try {
     const stats = await db.execute(sql`
       SELECT
-        (SELECT COUNT(*) FROM organizations) as total_orgs,
-        (SELECT COUNT(*) FROM organizations WHERE subscription_status = 'active') as active_orgs,
-        (SELECT COUNT(*) FROM organizations WHERE subscription_status = 'trial') as trial_orgs,
-        (SELECT COUNT(*) FROM organizations WHERE subscription_status = 'expired') as expired_orgs,
-        (SELECT COUNT(*) FROM organizations WHERE is_suspended = true) as suspended_orgs,
-        (SELECT COUNT(*) FROM users) as total_users,
-        (SELECT COUNT(*) FROM payment_requests WHERE status = 'pending') as pending_payments,
-        (SELECT COUNT(*) FROM payment_requests WHERE status = 'approved') as approved_payments,
-        (SELECT COALESCE(SUM(amount), 0) FROM payment_requests WHERE status = 'approved') as total_revenue
+        (SELECT COUNT(*) FROM organizations)                                                        AS total_orgs,
+        (SELECT COUNT(*) FROM organizations WHERE subscription_status = 'active')                  AS active_subscriptions,
+        (SELECT COUNT(*) FROM organizations WHERE subscription_status = 'trial')                   AS trial_orgs,
+        (SELECT COUNT(*) FROM organizations WHERE subscription_status = 'expired')                 AS expired_subscriptions,
+        (SELECT COUNT(*) FROM organizations WHERE is_suspended = true)                             AS suspended_orgs,
+        (SELECT COUNT(*) FROM users)                                                               AS total_users,
+        (SELECT COUNT(*) FROM payment_requests WHERE status = 'pending')                           AS pending_payments,
+        (SELECT COUNT(*) FROM payment_requests WHERE status = 'approved')                          AS approved_payments,
+        (SELECT COALESCE(SUM(amount), 0) FROM payment_requests WHERE status = 'approved')          AS total_revenue,
+        (SELECT COALESCE(SUM(amount), 0) FROM payment_requests
+           WHERE status = 'approved'
+             AND date_trunc('month', created_at) = date_trunc('month', NOW()))                     AS monthly_revenue,
+        (SELECT COALESCE(SUM(amount), 0) FROM payment_requests
+           WHERE status = 'approved'
+             AND date_trunc('year', created_at) = date_trunc('year', NOW()))                       AS annual_revenue,
+        (SELECT COUNT(*) FROM messages)                                                            AS whatsapp_messages,
+        (SELECT COALESCE(SUM(file_size), 0) FROM documents)                                        AS storage_bytes,
+        (SELECT COALESCE(SUM(ai_requests_used), 0) FROM organizations)                             AS ai_requests_total
     `);
     return res.json({ stats: stats.rows[0] });
   } catch (err) {
+    logger.error({ err }, "GET /admin/stats error");
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.get("/admin/growth", requireAuth, requireSuperAdmin, async (_req, res) => {
+  try {
+    const orgGrowth = await db.execute(sql`
+      SELECT
+        to_char(date_trunc('month', created_at), 'Mon YY') AS month,
+        date_trunc('month', created_at)                    AS month_ts,
+        COUNT(*)::int                                      AS new_orgs
+      FROM organizations
+      WHERE created_at >= NOW() - INTERVAL '11 months'
+      GROUP BY date_trunc('month', created_at)
+      ORDER BY month_ts ASC
+    `);
+
+    const revenueGrowth = await db.execute(sql`
+      SELECT
+        to_char(date_trunc('month', created_at), 'Mon YY') AS month,
+        date_trunc('month', created_at)                    AS month_ts,
+        COALESCE(SUM(amount), 0)::int                      AS revenue
+      FROM payment_requests
+      WHERE status = 'approved'
+        AND created_at >= NOW() - INTERVAL '11 months'
+      GROUP BY date_trunc('month', created_at)
+      ORDER BY month_ts ASC
+    `);
+
+    const subBreakdown = await db.execute(sql`
+      SELECT
+        subscription_status AS status,
+        COUNT(*)::int        AS count
+      FROM organizations
+      GROUP BY subscription_status
+      ORDER BY count DESC
+    `);
+
+    return res.json({
+      org_growth:    orgGrowth.rows,
+      revenue_growth: revenueGrowth.rows,
+      sub_breakdown:  subBreakdown.rows,
+    });
+  } catch (err) {
+    logger.error({ err }, "GET /admin/growth error");
     return res.status(500).json({ error: "Server error" });
   }
 });
