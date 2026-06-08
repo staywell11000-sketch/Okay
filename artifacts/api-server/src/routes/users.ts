@@ -1,10 +1,27 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { users } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
+import { logger } from "../lib/logger"
 
 const router = Router();
+
+// Public — used for precise auth error messages (no token needed)
+router.post("/auth/check-email", async (req, res) => {
+  const { email } = req.body as { email?: string };
+  if (!email?.trim()) return res.status(400).json({ error: "Email is required" });
+
+  try {
+    const rows = await db.execute(
+      sql`SELECT id FROM users WHERE LOWER(email) = ${email.toLowerCase().trim()} LIMIT 1`
+    );
+    return res.json({ exists: rows.rows.length > 0 });
+  } catch (err) {
+    logger.error({ err }, "check-email error");
+    return res.json({ exists: false });
+  }
+});
 
 router.get("/users/me", requireAuth, async (req: any, res) => {
   try {
@@ -20,7 +37,6 @@ router.get("/users/me", requireAuth, async (req: any, res) => {
 
 router.put("/users/me", requireAuth, async (req: any, res) => {
   try {
-    // Explicitly whitelist safe fields — never allow role to be set by the user
     const { email, firstName, lastName, title, phone, avatarUrl, onboarded } = req.body;
 
     const [existing] = await db.select().from(users).where(eq(users.id, req.userId));
@@ -50,7 +66,7 @@ router.put("/users/me", requireAuth, async (req: any, res) => {
         email: email || "",
         firstName,
         lastName,
-        role: "agent", // always default to agent on creation, never from body
+        role: "agent",
         title,
         phone,
         avatarUrl,

@@ -1,15 +1,17 @@
 import { useState } from "react"
-import { Link, useLocation } from "wouter"
+import { Link } from "wouter"
 import { supabase } from "@/lib/supabase"
+import { checkEmailExists } from "@/lib/auth-api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, Eye, EyeOff } from "lucide-react"
-import { motion } from "framer-motion"
+import { Loader2, Eye, EyeOff, AlertCircle } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
+import { cn } from "@/lib/utils"
 
 function GoogleIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
       <path d="M17.64 9.20455C17.64 8.56636 17.5827 7.95273 17.4764 7.36364H9V10.845H13.8436C13.635 11.97 13.0009 12.9232 12.0477 13.5614V15.8195H14.9564C16.6582 14.2527 17.64 11.9455 17.64 9.20455Z" fill="#4285F4"/>
       <path d="M9 18C11.43 18 13.4673 17.1941 14.9564 15.8195L12.0477 13.5614C11.2418 14.1014 10.2109 14.4205 9 14.4205C6.65591 14.4205 4.67182 12.8373 3.96409 10.71H0.957275V13.0418C2.43818 15.9832 5.48182 18 9 18Z" fill="#34A853"/>
       <path d="M3.96409 10.71C3.78409 10.17 3.68182 9.59318 3.68182 9C3.68182 8.40682 3.78409 7.83 3.96409 7.29V4.95818H0.957275C0.347727 6.17318 0 7.54773 0 9C0 10.4523 0.347727 11.8268 0.957275 13.0418L3.96409 10.71Z" fill="#FBBC05"/>
@@ -18,60 +20,124 @@ function GoogleIcon() {
   )
 }
 
+type ErrorType = "no_account" | "wrong_password" | "not_confirmed" | "google_disabled" | "generic"
+
+interface AuthError {
+  type: ErrorType
+  message: string
+}
+
+function ErrorBanner({ error }: { error: AuthError }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -6 }}
+      className={cn(
+        "flex items-start gap-2.5 rounded-xl border px-3.5 py-3 text-sm",
+        error.type === "no_account"
+          ? "border-amber-200 bg-amber-50 text-amber-800"
+          : "border-destructive/20 bg-destructive/8 text-destructive"
+      )}
+    >
+      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+      <span>{error.message}</span>
+    </motion.div>
+  )
+}
+
 export default function SignInPage() {
-  const [, setLocation] = useLocation()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
-  const [error, setError] = useState("")
+  const [authError, setAuthError] = useState<AuthError | null>(null)
+
+  const clearError = () => setAuthError(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    setError("")
+    setAuthError(null)
 
     const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) {
-      if (error.message.toLowerCase().includes("not confirmed") || error.message.toLowerCase().includes("email")) {
-        setError("Please confirm your email first — check your inbox for a link from us, then come back to sign in.")
-      } else if (error.message.toLowerCase().includes("invalid login")) {
-        setError("Incorrect email or password. Please try again.")
+
+    if (!error) {
+      // Success — do NOT navigate manually. PublicOnlyRoute detects the new
+      // session and redirects to /dashboard automatically, avoiding the race
+      // condition where auth state hasn't propagated yet.
+      // Keep loading=true so the user sees a spinner while that happens.
+      return
+    }
+
+    const msg = error.message.toLowerCase()
+
+    // Email confirmation required
+    if (msg.includes("not confirmed") || msg.includes("email not confirmed")) {
+      setAuthError({
+        type: "not_confirmed",
+        message:
+          "Your email isn't confirmed yet. Check your inbox for the activation link we sent, then try signing in again.",
+      })
+      setLoading(false)
+      return
+    }
+
+    // Supabase returns the same error for both "no account" and "wrong password".
+    // Resolve by checking our DB to give a precise message.
+    if (
+      msg.includes("invalid login") ||
+      msg.includes("invalid credentials") ||
+      msg.includes("invalid email") ||
+      msg.includes("wrong password") ||
+      msg.includes("no user found") ||
+      error.status === 400
+    ) {
+      const exists = await checkEmailExists(email)
+      if (!exists) {
+        setAuthError({
+          type: "no_account",
+          message: "No account found with this email address.",
+        })
       } else {
-        setError(error.message)
+        setAuthError({
+          type: "wrong_password",
+          message: "Incorrect password. Please try again.",
+        })
       }
       setLoading(false)
       return
     }
-    // Do NOT call setLocation here — the session state update is async.
-    // PublicOnlyRoute will detect the new session on the next render and
-    // redirect to /dashboard automatically, avoiding the race condition where
-    // ProtectedRoute sees session=null and bounces the user back to /sign-in.
-    // Keep loading=true so the user sees a spinner while the redirect happens.
+
+    // Fallback for unexpected errors
+    setAuthError({
+      type: "generic",
+      message: "Something went wrong. Please try again in a moment.",
+    })
+    setLoading(false)
   }
 
   const handleGoogle = async () => {
     setGoogleLoading(true)
-    setError("")
+    setAuthError(null)
     const base = import.meta.env.BASE_URL.replace(/\/$/, "")
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}${base}/dashboard`,
-      },
+      options: { redirectTo: `${window.location.origin}${base}/dashboard` },
     })
     if (error) {
-      if (
-        error.message.toLowerCase().includes("provider") ||
-        error.message.toLowerCase().includes("not enabled") ||
-        error.message.toLowerCase().includes("not supported") ||
-        error.message.toLowerCase().includes("unsupported")
-      ) {
-        setError("Google sign-in isn't activated yet. Go to your Supabase Dashboard → Authentication → Providers → Google and turn it on.")
-      } else {
-        setError("Google sign-in failed: " + error.message)
-      }
+      const msg = error.message.toLowerCase()
+      setAuthError({
+        type:
+          msg.includes("provider") || msg.includes("not enabled")
+            ? "google_disabled"
+            : "generic",
+        message:
+          msg.includes("provider") || msg.includes("not enabled") || msg.includes("unsupported")
+            ? "Google sign-in isn't enabled yet. Enable it in your Supabase Dashboard → Authentication → Providers."
+            : "Google sign-in failed. Please try again.",
+      })
       setGoogleLoading(false)
     }
   }
@@ -84,6 +150,7 @@ export default function SignInPage() {
         transition={{ duration: 0.4 }}
         className="w-full max-w-md"
       >
+        {/* Brand */}
         <div className="mb-8 flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/60 shadow-lg shadow-primary/25">
             <span className="text-lg font-bold text-primary-foreground">L</span>
@@ -124,10 +191,11 @@ export default function SignInPage() {
                 id="email"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => { setEmail(e.target.value); clearError() }}
                 placeholder="you@example.com"
                 required
                 autoComplete="email"
+                disabled={loading}
               />
             </div>
 
@@ -143,29 +211,52 @@ export default function SignInPage() {
                   id="password"
                   type={showPassword ? "text" : "password"}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => { setPassword(e.target.value); clearError() }}
                   placeholder="Enter your password"
                   required
                   autoComplete="current-password"
                   className="pr-10"
+                  disabled={loading}
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
+                  onClick={() => setShowPassword((v) => !v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  tabIndex={-1}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
 
-            {error && (
-              <div className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {error}
-              </div>
-            )}
+            <AnimatePresence mode="wait">
+              {authError && (
+                <div key={authError.type} className="space-y-1.5">
+                  <ErrorBanner error={authError} />
+                  {authError.type === "no_account" && (
+                    <p className="text-center text-xs text-muted-foreground">
+                      Don't have an account?{" "}
+                      <Link href="/sign-up" className="font-medium text-primary hover:underline">
+                        Sign up for free →
+                      </Link>
+                    </p>
+                  )}
+                  {authError.type === "wrong_password" && (
+                    <p className="text-center text-xs text-muted-foreground">
+                      <Link href="/forgot-password" className="font-medium text-primary hover:underline">
+                        Forgot your password? Reset it →
+                      </Link>
+                    </p>
+                  )}
+                </div>
+              )}
+            </AnimatePresence>
 
-            <Button type="submit" className="w-full font-semibold" disabled={loading || googleLoading}>
+            <Button
+              type="submit"
+              className="w-full font-semibold"
+              disabled={loading || googleLoading}
+            >
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {loading ? "Signing in…" : "Sign In"}
             </Button>

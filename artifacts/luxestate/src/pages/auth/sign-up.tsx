@@ -1,35 +1,25 @@
 import { useState } from "react"
 import { Link, useLocation } from "wouter"
 import { supabase } from "@/lib/supabase"
+import { checkEmailExists } from "@/lib/auth-api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import {
   Loader2, Eye, EyeOff, Mail, UserCheck, ArrowRight, ArrowLeft,
-  CheckCircle2, Lock, Zap, Users2, Brain
+  CheckCircle2, Lock, Zap, Users2, Brain, AlertCircle,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 
 function GoogleIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
       <path d="M17.64 9.20455C17.64 8.56636 17.5827 7.95273 17.4764 7.36364H9V10.845H13.8436C13.635 11.97 13.0009 12.9232 12.0477 13.5614V15.8195H14.9564C16.6582 14.2527 17.64 11.9455 17.64 9.20455Z" fill="#4285F4"/>
       <path d="M9 18C11.43 18 13.4673 17.1941 14.9564 15.8195L12.0477 13.5614C11.2418 14.1014 10.2109 14.4205 9 14.4205C6.65591 14.4205 4.67182 12.8373 3.96409 10.71H0.957275V13.0418C2.43818 15.9832 5.48182 18 9 18Z" fill="#34A853"/>
       <path d="M3.96409 10.71C3.78409 10.17 3.68182 9.59318 3.68182 9C3.68182 8.40682 3.78409 7.83 3.96409 7.29V4.95818H0.957275C0.347727 6.17318 0 7.54773 0 9C0 10.4523 0.347727 11.8268 0.957275 13.0418L3.96409 10.71Z" fill="#FBBC05"/>
       <path d="M9 3.57955C10.3214 3.57955 11.5077 4.03364 12.4405 4.92545L15.0218 2.34409C13.4632 0.891818 11.4259 0 9 0C5.48182 0 2.43818 2.01682 0.957275 4.95818L3.96409 7.29C4.67182 5.16273 6.65591 3.57955 9 3.57955Z" fill="#EA4335"/>
     </svg>
-  )
-}
-
-function isEmailTakenError(msg: string) {
-  const lower = msg.toLowerCase()
-  return (
-    lower.includes("already registered") ||
-    lower.includes("already been registered") ||
-    lower.includes("already exists") ||
-    lower.includes("email already") ||
-    lower.includes("user already")
   )
 }
 
@@ -116,7 +106,7 @@ export default function SignUpPage() {
   const [googleLoading, setGoogleLoading] = useState(false)
   const [error, setError] = useState("")
   const [emailTaken, setEmailTaken] = useState(false)
-  const [checkEmail, setCheckEmail] = useState(false)
+  const [checkEmailSent, setCheckEmailSent] = useState(false)
 
   const handleGoogle = async () => {
     setGoogleLoading(true)
@@ -127,10 +117,11 @@ export default function SignUpPage() {
       options: { redirectTo: `${window.location.origin}${base}/dashboard` },
     })
     if (error) {
+      const msg = error.message.toLowerCase()
       setError(
-        error.message.toLowerCase().includes("provider") || error.message.toLowerCase().includes("not enabled")
-          ? "Google sign-in isn't enabled yet. Go to your Supabase Dashboard → Authentication → Providers → Google and turn it on."
-          : "Google sign-in failed: " + error.message
+        msg.includes("provider") || msg.includes("not enabled")
+          ? "Google sign-in isn't enabled yet. Enable it in your Supabase Dashboard → Authentication → Providers."
+          : "Google sign-in failed. Please try again."
       )
       setGoogleLoading(false)
     }
@@ -140,10 +131,26 @@ export default function SignUpPage() {
     e.preventDefault()
     setError("")
     setEmailTaken(false)
-    if (password.length < 6) { setError("Password must be at least 6 characters."); return }
+
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters.")
+      return
+    }
 
     setLoading(true)
-    const { data, error } = await supabase.auth.signUp({
+
+    // Pre-check email existence BEFORE calling Supabase.
+    // When email confirmation is enabled Supabase silently "succeeds" for
+    // duplicate sign-ups (it just re-sends the confirmation email), so we
+    // can't rely on its error message to catch duplicates reliably.
+    const exists = await checkEmailExists(email)
+    if (exists) {
+      setEmailTaken(true)
+      setLoading(false)
+      return
+    }
+
+    const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -152,21 +159,38 @@ export default function SignUpPage() {
       },
     })
 
-    if (error) {
-      if (isEmailTakenError(error.message)) setEmailTaken(true)
-      else setError(error.message)
+    if (signUpError) {
+      const msg = signUpError.message.toLowerCase()
+      // Fallback duplicate detection in case our DB check missed it
+      if (
+        msg.includes("already registered") ||
+        msg.includes("already been registered") ||
+        msg.includes("already exists") ||
+        msg.includes("email already") ||
+        msg.includes("user already")
+      ) {
+        setEmailTaken(true)
+      } else if (msg.includes("weak password") || msg.includes("password")) {
+        setError("Your password is too weak. Use at least 8 characters with a mix of letters and numbers.")
+      } else if (msg.includes("invalid email") || msg.includes("not valid")) {
+        setError("That doesn't look like a valid email address. Please check and try again.")
+      } else {
+        setError("Unable to create account. Please try again in a moment.")
+      }
       setLoading(false)
       return
     }
 
-    if (data.session) return
-    setCheckEmail(true)
+    // data.session is non-null when email confirmation is disabled
+    if (data.session) return // Auth context will handle redirect
+
+    setCheckEmailSent(true)
     setLoading(false)
   }
 
-  // ── Check-email screen ──────────────────────────────────────────────────────
-  if (checkEmail) {
-    const planInfo = PLANS.find(p => p.slug === selectedPlan)!
+  // ── Confirm-email screen ────────────────────────────────────────────────────
+  if (checkEmailSent) {
+    const planInfo = PLANS.find((p) => p.slug === selectedPlan)!
     return (
       <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-gradient-to-br from-amber-50 via-background to-orange-50 px-4 py-12">
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md">
@@ -180,7 +204,7 @@ export default function SignUpPage() {
             {selectedPlan !== "free" && (
               <div className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
                 <planInfo.icon className="h-3.5 w-3.5" />
-                {planInfo.name} trial will activate after confirmation
+                {planInfo.name} trial activates after confirmation
               </div>
             )}
             <p className="text-sm text-muted-foreground">
@@ -199,30 +223,47 @@ export default function SignUpPage() {
   if (emailTaken) {
     return (
       <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-gradient-to-br from-amber-50 via-background to-orange-50 px-4 py-12">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="w-full max-w-md">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="w-full max-w-md"
+        >
           <BrandHeader />
           <div className="rounded-2xl bg-white p-8 shadow-xl shadow-black/8">
             <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 border border-amber-100">
               <UserCheck className="h-7 w-7 text-amber-500" />
             </div>
-            <h1 className="mb-2 text-xl font-semibold text-foreground">Account already exists</h1>
-            <p className="mb-1 text-sm text-muted-foreground">An account registered to</p>
-            <p className="mb-4 truncate font-semibold text-foreground">{email}</p>
-            <p className="mb-6 text-sm text-muted-foreground leading-relaxed">
-              It looks like you already have an account with us. Sign in to continue, or use a different email address to create a new account.
-            </p>
+            <h1 className="mb-2 text-xl font-semibold text-foreground">
+              An account with this email already exists. Please sign in.
+            </h1>
+            <p className="mb-1 text-sm text-muted-foreground">Account registered to</p>
+            <p className="mb-6 truncate font-semibold text-foreground">{email}</p>
             <div className="space-y-3">
-              <Button className="w-full gap-2 font-semibold" onClick={() => setLocation("/sign-in")}>
+              <Button
+                className="w-full gap-2 font-semibold"
+                onClick={() => setLocation("/sign-in")}
+              >
                 Sign in to your account <ArrowRight className="h-4 w-4" />
               </Button>
-              <Button variant="outline" className="w-full" onClick={() => { setEmailTaken(false); setEmail(""); setPassword("") }}>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  setEmailTaken(false)
+                  setEmail("")
+                  setPassword("")
+                }}
+              >
                 Use a different email
               </Button>
             </div>
             <div className="mt-6 rounded-xl bg-muted/40 px-4 py-3">
               <p className="text-xs text-muted-foreground text-center">
                 Forgot your password?{" "}
-                <Link href="/sign-in" className="font-medium text-primary hover:underline">Reset it on the sign-in page</Link>
+                <Link href="/forgot-password" className="font-medium text-primary hover:underline">
+                  Reset it here
+                </Link>
               </p>
             </div>
           </div>
@@ -268,29 +309,27 @@ export default function SignUpPage() {
                       {plan.badge}
                     </div>
                   )}
-
                   {isSelected && (
                     <div className="absolute top-3 right-3 flex h-5 w-5 items-center justify-center rounded-full bg-primary">
                       <CheckCircle2 className="h-3.5 w-3.5 text-white" />
                     </div>
                   )}
-
                   <div className={`mb-3 flex h-10 w-10 items-center justify-center rounded-xl ${plan.iconBg}`}>
                     <Icon className="h-5 w-5" />
                   </div>
-
                   <h3 className="font-bold text-foreground text-base mb-0.5">{plan.name}</h3>
                   <div className="mb-4">
                     {plan.price === 0 ? (
                       <span className="text-2xl font-extrabold text-foreground">Free</span>
                     ) : (
                       <div className="flex items-baseline gap-1">
-                        <span className="text-xl font-extrabold text-foreground">Rs. {plan.price.toLocaleString()}</span>
+                        <span className="text-xl font-extrabold text-foreground">
+                          Rs. {plan.price.toLocaleString()}
+                        </span>
                         <span className="text-xs text-muted-foreground">/mo</span>
                       </div>
                     )}
                   </div>
-
                   <ul className="space-y-1.5">
                     {plan.features.map((f, i) => (
                       <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
@@ -299,7 +338,6 @@ export default function SignUpPage() {
                       </li>
                     ))}
                   </ul>
-
                   {plan.slug !== "free" && (
                     <div className="mt-3 flex items-center gap-1 text-[10px] text-muted-foreground">
                       <Lock className="h-3 w-3" />
@@ -316,7 +354,7 @@ export default function SignUpPage() {
               className="w-full max-w-sm gap-2 font-semibold"
               onClick={() => setStep("account")}
             >
-              Continue with {PLANS.find(p => p.slug === selectedPlan)?.name}
+              Continue with {PLANS.find((p) => p.slug === selectedPlan)?.name}
               <ArrowRight className="h-4 w-4" />
             </Button>
             <p className="text-center text-sm text-muted-foreground">
@@ -330,7 +368,7 @@ export default function SignUpPage() {
   }
 
   // ── Step 2: Account creation ────────────────────────────────────────────────
-  const chosenPlan = PLANS.find(p => p.slug === selectedPlan)!
+  const chosenPlan = PLANS.find((p) => p.slug === selectedPlan)!
   return (
     <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-gradient-to-br from-amber-50 via-background to-orange-50 px-4 py-12">
       <motion.div
@@ -394,6 +432,7 @@ export default function SignUpPage() {
                 placeholder="james@luxeestate.com"
                 required
                 autoComplete="email"
+                disabled={loading}
               />
             </div>
 
@@ -409,11 +448,13 @@ export default function SignUpPage() {
                   required
                   autoComplete="new-password"
                   className="pr-10"
+                  disabled={loading}
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
+                  onClick={() => setShowPassword((v) => !v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  tabIndex={-1}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -426,14 +467,19 @@ export default function SignUpPage() {
                   initial={{ opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  className="rounded-lg border border-destructive/20 bg-destructive/8 px-3 py-2.5 text-sm text-destructive"
+                  className="flex items-start gap-2.5 rounded-xl border border-destructive/20 bg-destructive/8 px-3.5 py-3 text-sm text-destructive"
                 >
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                   {error}
                 </motion.div>
               )}
             </AnimatePresence>
 
-            <Button type="submit" className="w-full font-semibold" disabled={loading || googleLoading}>
+            <Button
+              type="submit"
+              className="w-full font-semibold"
+              disabled={loading || googleLoading}
+            >
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {loading ? "Creating account…" : chosenPlan.cta}
             </Button>
