@@ -210,7 +210,9 @@ function parseUserAgent(ua: string): { browser: string; os: string } {
 // ─── Main Page ────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const { data, isLoading, isError, refetch } = useSettings()
+  const { data, isPending, isFetching, isError, refetch } = useSettings()
+  const [retrying, setRetrying] = useState(false)
+  const handleRetry = async () => { setRetrying(true); try { await refetch() } finally { setRetrying(false) } }
   const updateSettings = useUpdateSettings()
   const { theme, setTheme } = useTheme()
   const { session, signOut } = useAuth()
@@ -543,7 +545,8 @@ export default function SettingsPage() {
   const pwStrengthLabel = ["", "Weak", "Fair", "Good", "Strong", "Very strong"][pwStrength] ?? ""
   const pwStrengthColor = pwStrength <= 1 ? "bg-red-500" : pwStrength <= 2 ? "bg-amber-500" : pwStrength <= 3 ? "bg-yellow-400" : "bg-emerald-500"
 
-  if (isLoading) {
+  // First-ever load — no data at all yet
+  if (isPending) {
     return (
       <div className="space-y-6">
         <DashboardPageHeader title="Settings" description="Manage your profile, preferences, and integrations." />
@@ -554,15 +557,28 @@ export default function SettingsPage() {
     )
   }
 
-  if (isError) {
+  // Hard error — first load failed with no data to fall back on
+  if (isError && !data) {
     return (
       <div className="space-y-6">
         <DashboardPageHeader title="Settings" description="Manage your profile, preferences, and integrations." />
-        <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-500 flex items-center gap-3">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          Failed to load settings.
-          <button onClick={() => refetch()} className="ml-auto underline font-medium flex items-center gap-1">
-            <RefreshCw className="h-3 w-3" /> Retry
+        <div className="flex flex-col items-center justify-center gap-4 py-16">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10">
+            <AlertCircle className="h-7 w-7 text-destructive" />
+          </div>
+          <div className="text-center">
+            <p className="text-base font-semibold">Failed to load settings</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              The server may be starting up. Your account data is safe — try again in a moment.
+            </p>
+          </div>
+          <button
+            onClick={handleRetry}
+            disabled={retrying}
+            className="mt-1 flex items-center gap-1.5 rounded-lg border border-border/60 bg-secondary/40 px-4 py-2 text-sm font-medium hover:bg-secondary/60 disabled:opacity-50"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", retrying && "animate-spin")} />
+            {retrying ? "Retrying…" : "Try Again"}
           </button>
         </div>
       </div>
@@ -574,7 +590,32 @@ export default function SettingsPage() {
       <DashboardPageHeader
         title="Settings"
         description="Manage your profile, preferences, and integrations."
+        actions={
+          isFetching ? (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Syncing…
+            </span>
+          ) : null
+        }
       />
+
+      {/* Soft error — re-fetch failed but stale data is still shown */}
+      {isError && data && (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/8 px-4 py-3 text-sm">
+          <AlertCircle className="h-4 w-4 shrink-0 text-amber-500" />
+          <span className="text-amber-700 dark:text-amber-400">
+            Couldn't refresh your settings — showing last saved data.
+          </span>
+          <button
+            onClick={handleRetry}
+            disabled={retrying}
+            className="ml-auto flex items-center gap-1 text-xs font-medium text-amber-600 underline underline-offset-2 hover:text-amber-700 disabled:opacity-50 dark:text-amber-400"
+          >
+            <RefreshCw className={cn("h-3 w-3", retrying && "animate-spin")} />
+            {retrying ? "Retrying…" : "Retry"}
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-col gap-6 md:flex-row md:items-start">
         {/* ── Sidebar ─────────────────────────────────────── */}
