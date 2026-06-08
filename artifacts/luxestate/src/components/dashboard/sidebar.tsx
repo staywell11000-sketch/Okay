@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, Building2, BarChart3, Settings,
   ChevronLeft, Bell, MessageSquare, Brain, Zap, Users2,
   ClipboardList, FolderOpen, CalendarDays, Cable, LogOut,
-  Calculator, Handshake, CreditCard, Shield, Lock,
+  Calculator, Handshake, CreditCard, Shield, Lock, MapPin,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
@@ -357,6 +357,10 @@ function SidebarUserSection({
     </div>
   )
 
+  const handleStartTour = () => {
+    window.dispatchEvent(new CustomEvent("crm-tour-start"))
+  }
+
   if (collapsed) {
     return (
       <div className="flex flex-col items-center gap-2 py-1">
@@ -381,6 +385,18 @@ function SidebarUserSection({
           <TooltipContent side="right">
             Notifications{unreadCount > 0 ? ` (${unreadCount})` : ""}
           </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={handleStartTour}
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-sidebar-foreground hover:bg-sidebar-accent transition-colors duration-150"
+            >
+              <MapPin className="h-4 w-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">Product Tour</TooltipContent>
         </Tooltip>
 
         <Tooltip>
@@ -411,6 +427,19 @@ function SidebarUserSection({
 
   return (
     <div className="flex items-center gap-1.5">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={handleStartTour}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sidebar-foreground hover:bg-sidebar-accent transition-colors duration-150"
+            title="Product Tour"
+          >
+            <MapPin className="h-4 w-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top">Product Tour</TooltipContent>
+      </Tooltip>
+
       <button
         onClick={onToggleNotif}
         className={cn(
