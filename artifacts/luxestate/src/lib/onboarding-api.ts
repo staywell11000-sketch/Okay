@@ -47,9 +47,11 @@ export function useOrgProfile() {
     queryKey: ["org-profile"],
     queryFn: () => apiFetch("/api/org/me").then(async (r) => {
       if (!r.ok) throw new Error("No org")
-      return r.json()
+      const data = await r.json()
+      // /org/me from organizations.ts returns { organization: {...} }
+      return (data.organization ?? data) as OrgProfile
     }),
-    retry: false,
+    retry: 2,
     staleTime: 60_000,
   })
 }

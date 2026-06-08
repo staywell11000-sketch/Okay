@@ -37,6 +37,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     const email = user.email ?? "";
     const isSuperAdmin = email === "murtazaarshad499@gmail.com";
 
+    // Upsert user record — do NOT update onboarded (preserve existing value)
     await db.execute(sql`
       INSERT INTO users (id, email, first_name, last_name, role, org_role, onboarded, is_active, created_at, updated_at)
       VALUES (
@@ -59,22 +60,40 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         updated_at = NOW()
     `);
 
-    const existingOwner = await db.execute(sql`SELECT id FROM organizations WHERE owner_id = ${user.id} LIMIT 1`);
+    // ── OWNER SELF-HEALING ────────────────────────────────────────────────────
+    // Check for any org where this user is the owner_id (authoritative lookup).
+    // Always wins over organization_id column value so owners are never locked out.
+    const existingOwner = await db.execute(sql`
+      SELECT id FROM organizations WHERE owner_id = ${user.id} ORDER BY created_at ASC LIMIT 1
+    `);
+
     if (existingOwner.rows.length > 0) {
-      // Owner exists — ensure their organization_id and org_role are set correctly
       const ownedOrgId = (existingOwner.rows[0] as any).id;
+      // Ensure owner always has correct organization_id, org_role, AND onboarded=true.
+      // Owners never need to complete the new-user onboarding wizard.
       await db.execute(sql`
         UPDATE users
         SET organization_id = ${ownedOrgId},
-            org_role = 'admin',
-            updated_at = NOW()
+            org_role        = 'admin',
+            onboarded       = true,
+            updated_at      = NOW()
         WHERE id = ${user.id}
-          AND (organization_id IS DISTINCT FROM ${ownedOrgId} OR org_role IS DISTINCT FROM 'admin')
+          AND (
+            organization_id IS DISTINCT FROM ${ownedOrgId}
+            OR org_role     IS DISTINCT FROM 'admin'
+            OR onboarded    IS DISTINCT FROM true
+          )
       `);
     } else {
-      const existingMember = await db.execute(sql`SELECT organization_id FROM users WHERE id = ${user.id} AND organization_id IS NOT NULL LIMIT 1`);
-      if (!existingMember.rows.length) {
+      // User does not own any org — check if they already have one assigned
+      const existingMember = await db.execute(sql`
+        SELECT organization_id FROM users
+        WHERE id = ${user.id} AND organization_id IS NOT NULL
+        LIMIT 1
+      `);
 
+      if (!existingMember.rows.length) {
+        // No org at all — check for a pending invite first
         const pendingInvite = await db.execute(sql`
           SELECT organization_id, org_role FROM invitations
           WHERE LOWER(email) = ${email.toLowerCase()}
@@ -84,12 +103,14 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         `);
 
         if (pendingInvite.rows.length > 0) {
+          // Accept the invitation — employees skip business onboarding
           const inv = pendingInvite.rows[0] as any;
           await db.execute(sql`
             UPDATE users
             SET organization_id = ${inv.organization_id},
-                org_role = ${inv.org_role},
-                updated_at = NOW()
+                org_role        = ${inv.org_role},
+                onboarded       = true,
+                updated_at      = NOW()
             WHERE id = ${user.id}
           `);
           await db.execute(sql`
@@ -101,6 +122,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
           `);
           logger.info({ userId: user.id, email, orgId: inv.organization_id }, "Invited user joined organization");
         } else {
+          // Brand-new owner — auto-create their organization.
+          // onboarded stays false so they go through the setup wizard.
           const rawOrgName = meta.org_name as string | undefined;
           const orgName = isSuperAdmin
             ? "LuxeState Admin"
@@ -125,13 +148,23 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
             await db.execute(sql`
               UPDATE users
               SET organization_id = ${newOrgId},
-                  org_role = 'admin',
-                  updated_at = NOW()
+                  org_role        = 'admin',
+                  updated_at      = NOW()
               WHERE id = ${user.id}
             `);
             logger.info({ userId: user.id, orgId: newOrgId, plan }, "Created organization for new owner");
           }
         }
+      } else {
+        // User already has an org_id assigned (employee member) — ensure they're marked onboarded.
+        // Employees don't need the business setup wizard.
+        await db.execute(sql`
+          UPDATE users
+          SET onboarded  = true,
+              updated_at = NOW()
+          WHERE id = ${user.id}
+            AND onboarded IS DISTINCT FROM true
+        `);
       }
     }
   } catch (err) {

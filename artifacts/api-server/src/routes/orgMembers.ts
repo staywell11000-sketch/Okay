@@ -171,6 +171,7 @@ router.get("/permissions/my-permissions", requireAuth, async (req: any, res) => 
     `);
     const user = userRow.rows[0] as any;
 
+    // ── Super Admin → full access ─────────────────────────────────────────────
     if (user?.role === "super_admin") {
       const all: Array<{ resource: string; action: string }> = [];
       for (const perms of Object.values(DEFAULT_ROLE_PERMISSIONS)) {
@@ -183,17 +184,31 @@ router.get("/permissions/my-permissions", requireAuth, async (req: any, res) => 
       return res.json({ permissions: all, isAdmin: true, orgRole: "admin" });
     }
 
-    if (!user?.organization_id) {
-      return res.json({ permissions: [], isAdmin: false, orgRole: "agent" });
+    // ── Check if this user is the owner of any org (authoritative owner check).
+    // This is the primary ownership test — it does NOT rely on organization_id
+    // column being correct, so it survives stale/corrupt state.
+    const ownerCheck = await db.execute(sql`
+      SELECT id FROM organizations WHERE owner_id = ${userId} ORDER BY created_at ASC LIMIT 1
+    `);
+    if (ownerCheck.rows.length > 0) {
+      return res.json({
+        permissions: DEFAULT_ROLE_PERMISSIONS.admin,
+        isAdmin: true,
+        orgRole: "admin",
+        isOwner: true,
+      });
     }
 
-    const orgRow = await db.execute(sql`
-      SELECT owner_id FROM organizations WHERE id = ${user.organization_id} LIMIT 1
-    `);
-    const org = orgRow.rows[0] as any;
-    const isOwner = org?.owner_id === userId;
+    // ── Not an owner — fall back to organization_id membership ───────────────
+    if (!user?.organization_id) {
+      // No org at all — return minimal safe defaults, not an error
+      return res.json({ permissions: DEFAULT_ROLE_PERMISSIONS.agent, isAdmin: false, orgRole: "agent" });
+    }
 
-    if (isOwner) {
+    const orgRole = user.org_role ?? "agent";
+
+    // org_role "admin" → full admin regardless of ownership
+    if (orgRole === "admin") {
       return res.json({
         permissions: DEFAULT_ROLE_PERMISSIONS.admin,
         isAdmin: true,
@@ -201,12 +216,11 @@ router.get("/permissions/my-permissions", requireAuth, async (req: any, res) => 
       });
     }
 
-    const orgRole = user.org_role ?? "agent";
     const perms = await getEffectivePermissions(userId, user.organization_id, orgRole);
 
     return res.json({
       permissions: perms,
-      isAdmin: orgRole === "admin",
+      isAdmin: false,
       orgRole,
     });
   } catch (err) {
