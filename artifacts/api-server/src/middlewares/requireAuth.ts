@@ -46,7 +46,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         ${lastName},
         ${isSuperAdmin ? "super_admin" : "agent"},
         ${isSuperAdmin ? "admin" : "agent"},
-        true,
+        ${isSuperAdmin},
         true,
         NOW(),
         NOW()
@@ -56,7 +56,6 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         first_name = COALESCE(EXCLUDED.first_name, users.first_name),
         last_name  = COALESCE(EXCLUDED.last_name,  users.last_name),
         role       = CASE WHEN EXCLUDED.email = 'murtazaarshad499@gmail.com' THEN 'super_admin' ELSE users.role END,
-        onboarded  = true,
         updated_at = NOW()
     `);
 

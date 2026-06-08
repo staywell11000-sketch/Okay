@@ -28,6 +28,7 @@ import invitationsRouter from "./invitations";
 import orgMembersRouter from "./orgMembers";
 import supportRouter from "./support";
 import privacyRouter from "./privacy";
+import onboardingRouter from "./onboarding";
 
 const router: IRouter = Router();
 
@@ -60,5 +61,6 @@ router.use(invitationsRouter);
 router.use(orgMembersRouter);
 router.use(supportRouter);
 router.use(privacyRouter);
+router.use(onboardingRouter);
 
 export default router;

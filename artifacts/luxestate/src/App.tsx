@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider, useAuth } from "@/lib/auth-context"
 import { useCurrentUser } from "@/lib/user-api"
 import { Loader2 } from "lucide-react"
+import OnboardingPage from "@/pages/onboarding"
 import { PlanProvider } from "@/lib/plan-context"
 import { PermissionsProvider, usePermissions } from "@/lib/permissions-context"
 import { AccessDenied } from "@/components/dashboard/access-denied"
@@ -90,6 +91,24 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function OnboardingGuard({ children }: { children: React.ReactNode }) {
+  const { session, loading } = useAuth()
+  const { data: profile, isLoading: profileLoading } = useCurrentUser(session?.user?.id)
+  if (loading || (!!session && profileLoading)) return <LoadingScreen />
+  if (!session) return <Redirect to="/sign-in" />
+  if (profile && !profile.onboarded) return <Redirect to="/onboarding" />
+  return <>{children}</>
+}
+
+function OnboardingRoute({ children }: { children: React.ReactNode }) {
+  const { session, loading } = useAuth()
+  const { data: profile, isLoading: profileLoading } = useCurrentUser(session?.user?.id)
+  if (loading || (!!session && profileLoading)) return <LoadingScreen />
+  if (!session) return <Redirect to="/sign-in" />
+  if (profile?.onboarded) return <Redirect to="/dashboard" />
+  return <>{children}</>
+}
+
 function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth()
   if (loading) return <LoadingScreen />
@@ -119,7 +138,7 @@ function PermissionGuard({
 
 function DashboardRoutes() {
   return (
-    <ProtectedRoute>
+    <OnboardingGuard>
       <DashboardLayout>
         <Switch>
           <Route path="/dashboard" component={OverviewPage} />
@@ -168,19 +187,19 @@ function DashboardRoutes() {
           <Route component={NotFound} />
         </Switch>
       </DashboardLayout>
-    </ProtectedRoute>
+    </OnboardingGuard>
   )
 }
 
 function LeadProfileRoute({ params }: { params: { id: string } }) {
   return (
-    <ProtectedRoute>
+    <OnboardingGuard>
       <DashboardLayout>
         <PermissionGuard resource="leads">
           <LeadProfilePage params={params} />
         </PermissionGuard>
       </DashboardLayout>
-    </ProtectedRoute>
+    </OnboardingGuard>
   )
 }
 
@@ -215,7 +234,7 @@ function Router() {
       <Route path="/accept-invite" component={AcceptInvitePage} />
       <Route path="/forgot-password" component={ForgotPasswordPage} />
       <Route path="/onboarding">
-        <ProtectedRoute><Redirect to="/dashboard" /></ProtectedRoute>
+        <OnboardingRoute><OnboardingPage /></OnboardingRoute>
       </Route>
       <Route path="/dashboard/leads/:id" component={LeadProfileRoute} />
       <Route path="/dashboard" component={DashboardRoutes} />
