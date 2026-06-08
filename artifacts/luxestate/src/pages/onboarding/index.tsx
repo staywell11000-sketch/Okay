@@ -17,7 +17,7 @@ import {
   Sparkles, Camera,
 } from "lucide-react"
 
-const TOTAL_STEPS = 6
+const TOTAL_STEPS = 7
 
 const THEMES = [
   { key: "gold",           label: "Gold",           primary: "#d4a017", bg: "#fffbea" },
@@ -31,6 +31,11 @@ const THEMES = [
 
 const BUSINESS_TYPES = [
   "Real Estate Agency", "Property Dealer", "Builder/Developer", "Broker", "Other",
+]
+const HOW_HEARD_OPTIONS = [
+  "Google Search", "Social Media (Facebook/Instagram)", "Friend or Colleague",
+  "Real Estate Forum", "YouTube", "LinkedIn", "WhatsApp Group",
+  "Property Portal", "Online Advertisement", "Other",
 ]
 const AGENT_COUNTS = ["Just me", "2–5", "6–15", "16–50", "50+"]
 const LEAD_SOURCES = [
@@ -230,6 +235,8 @@ export default function OnboardingPage() {
     "pipeline_changes", "ai_recommendations", "system_updates",
   ])
 
+  const [howHeard, setHowHeard] = useState("")
+  const [wantsTour, setWantsTour] = useState<boolean | null>(null)
   const [done, setDone] = useState(false)
 
   const go = (delta: number) => {
@@ -250,6 +257,8 @@ export default function OnboardingPage() {
         agentCount: agentCount || undefined,
         primaryLeadSource: primaryLeadSource || undefined,
         crmUse: crmUse || undefined,
+        howHeard: howHeard || undefined,
+        wantsTour: wantsTour === true,
         logoUrl: logoUrl || undefined,
         businessPhone: businessPhone || undefined,
         businessEmail: businessEmail || undefined,
@@ -267,6 +276,10 @@ export default function OnboardingPage() {
         notifFrequency,
         notifCategories,
       })
+      // Suppress the tour if the user opted out
+      if (wantsTour === false && user?.id) {
+        localStorage.setItem(`lxs-tour-done-${user.id}`, "true")
+      }
       setDone(true)
       setTimeout(() => navigate("/dashboard"), 2500)
     } catch (err: any) {
@@ -279,6 +292,7 @@ export default function OnboardingPage() {
     "Branding & Contact",
     "Your Profile",
     "CRM Goals",
+    "Discovery & Tour",
     "Appearance",
     "Notifications",
   ]
@@ -503,6 +517,53 @@ export default function OnboardingPage() {
                 {step === 5 && (
                   <>
                     <div>
+                      <h2 className="text-xl font-bold text-foreground">Almost there!</h2>
+                      <p className="text-sm text-muted-foreground mt-1">Two quick questions to personalise your experience.</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">How did you hear about RealCRM?</Label>
+                      <ChipGroup options={HOW_HEARD_OPTIONS} value={howHeard} onChange={setHowHeard} />
+                    </div>
+
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium">Would you like a guided CRM tour after setup?</Label>
+                      <p className="text-xs text-muted-foreground">A quick walkthrough of the key features — takes about 2 minutes.</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setWantsTour(true)}
+                          className={cn(
+                            "flex flex-col items-center gap-2.5 rounded-xl border-2 px-4 py-4 transition-all",
+                            wantsTour === true
+                              ? "border-primary bg-primary/5 shadow-sm"
+                              : "border-border/40 hover:border-primary/40"
+                          )}
+                        >
+                          <Sparkles className={cn("h-6 w-6", wantsTour === true ? "text-primary" : "text-muted-foreground")} />
+                          <span className="text-sm font-semibold">Yes, show me around</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setWantsTour(false)}
+                          className={cn(
+                            "flex flex-col items-center gap-2.5 rounded-xl border-2 px-4 py-4 transition-all",
+                            wantsTour === false
+                              ? "border-border bg-secondary/30 shadow-sm"
+                              : "border-border/40 hover:border-border"
+                          )}
+                        >
+                          <X className={cn("h-6 w-6", wantsTour === false ? "text-muted-foreground" : "text-muted-foreground/40")} />
+                          <span className="text-sm font-semibold">Skip for now</span>
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {step === 6 && (
+                  <>
+                    <div>
                       <h2 className="text-xl font-bold text-foreground">Choose your appearance</h2>
                       <p className="text-sm text-muted-foreground mt-1">Pick a theme that feels right. You can change it anytime.</p>
                     </div>
@@ -538,7 +599,7 @@ export default function OnboardingPage() {
                   </>
                 )}
 
-                {step === 6 && (
+                {step === 7 && (
                   <>
                     <div>
                       <h2 className="text-xl font-bold text-foreground">Notification preferences</h2>

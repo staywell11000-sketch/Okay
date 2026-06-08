@@ -25,7 +25,7 @@ export interface FeatureConfig {
 export const FEATURE_CONFIG: Record<string, FeatureConfig> = {
   lead_sources: {
     name: "Lead Sources & Integrations",
-    requiredPlan: "starter",
+    requiredPlan: "professional",
     benefits: [
       "Connect WhatsApp, Facebook & Instagram",
       "Auto-import leads from Facebook Lead Ads",
@@ -34,8 +34,8 @@ export const FEATURE_CONFIG: Record<string, FeatureConfig> = {
     ],
   },
   messages: {
-    name: "Messages",
-    requiredPlan: "starter",
+    name: "WhatsApp Messages",
+    requiredPlan: "professional",
     benefits: [
       "WhatsApp conversation threads",
       "Template messages & broadcast lists",

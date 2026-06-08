@@ -24,6 +24,8 @@ export type OnboardingPayload = {
   agentCount?: string
   primaryLeadSource?: string
   crmUse?: string
+  howHeard?: string
+  wantsTour?: boolean
   logoUrl?: string
   businessPhone?: string
   businessEmail?: string

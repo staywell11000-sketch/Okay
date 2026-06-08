@@ -6,11 +6,56 @@ import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
+// Auto-migrate: add columns and constraints that may not exist yet
+async function ensureOnboardingSchema() {
+  const migrations: Array<{ label: string; query: string }> = [
+    {
+      label: "organizations.how_heard",
+      query: `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS how_heard VARCHAR(200)`,
+    },
+    {
+      label: "organizations.wants_tour",
+      query: `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS wants_tour BOOLEAN DEFAULT false`,
+    },
+    {
+      label: "organizations.onboarding_completed_at",
+      query: `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS onboarding_completed_at TIMESTAMP`,
+    },
+    {
+      label: "users.onboarding_completed_at",
+      query: `ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_completed_at TIMESTAMP`,
+    },
+    {
+      label: "organizations_owner_id_unique constraint",
+      query: `
+        DO $$ BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conname = 'organizations_owner_id_unique'
+          ) THEN
+            ALTER TABLE organizations ADD CONSTRAINT organizations_owner_id_unique UNIQUE (owner_id);
+          END IF;
+        END $$
+      `,
+    },
+  ];
+
+  for (const m of migrations) {
+    try {
+      await db.execute(sql.raw(m.query));
+    } catch (err: any) {
+      logger.warn({ label: m.label, err: err?.message }, "ensureOnboardingSchema: non-fatal migration warning");
+    }
+  }
+}
+ensureOnboardingSchema();
+
 router.post("/onboarding/complete", requireAuth, async (req: any, res) => {
   const userId: string = req.userId;
   try {
     const {
       orgName, businessType, agentCount, primaryLeadSource, crmUse,
+      howHeard, wantsTour,
       logoUrl, businessPhone, businessEmail, businessAddress, businessWebsite,
       firstName, lastName, position, phone, avatarUrl,
       theme,
@@ -24,29 +69,33 @@ router.post("/onboarding/complete", requireAuth, async (req: any, res) => {
     if (orgId) {
       await db.execute(sql`
         UPDATE organizations SET
-          name                = COALESCE(${orgName || null}, name),
-          logo_url            = ${logoUrl || null},
-          business_phone      = ${businessPhone || null},
-          business_email      = ${businessEmail || null},
-          business_address    = ${businessAddress || null},
-          business_website    = ${businessWebsite || null},
-          business_type       = ${businessType || null},
-          agent_count         = ${agentCount || null},
-          primary_lead_source = ${primaryLeadSource || null},
-          crm_use             = ${crmUse || null},
-          updated_at          = NOW()
+          name                    = COALESCE(${orgName || null}, name),
+          logo_url                = ${logoUrl || null},
+          business_phone          = ${businessPhone || null},
+          business_email          = ${businessEmail || null},
+          business_address        = ${businessAddress || null},
+          business_website        = ${businessWebsite || null},
+          business_type           = ${businessType || null},
+          agent_count             = ${agentCount || null},
+          primary_lead_source     = ${primaryLeadSource || null},
+          crm_use                 = ${crmUse || null},
+          how_heard               = ${howHeard || null},
+          wants_tour              = ${wantsTour === true},
+          onboarding_completed_at = NOW(),
+          updated_at              = NOW()
         WHERE id = ${orgId}
       `);
     }
 
     await db.execute(sql`
       UPDATE users SET
-        first_name = COALESCE(${firstName || null}, first_name),
-        last_name  = COALESCE(${lastName  || null}, last_name),
-        phone      = COALESCE(${phone     || null}, phone),
-        avatar_url = COALESCE(${avatarUrl || null}, avatar_url),
-        onboarded  = true,
-        updated_at = NOW()
+        first_name              = COALESCE(${firstName || null}, first_name),
+        last_name               = COALESCE(${lastName  || null}, last_name),
+        phone                   = COALESCE(${phone     || null}, phone),
+        avatar_url              = COALESCE(${avatarUrl || null}, avatar_url),
+        onboarded               = true,
+        onboarding_completed_at = NOW(),
+        updated_at              = NOW()
       WHERE id = ${userId}
     `);
 

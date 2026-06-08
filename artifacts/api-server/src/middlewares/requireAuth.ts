@@ -69,19 +69,17 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     if (existingOwner.rows.length > 0) {
       const ownedOrgId = (existingOwner.rows[0] as any).id;
-      // Ensure owner always has correct organization_id, org_role, AND onboarded=true.
-      // Owners never need to complete the new-user onboarding wizard.
+      // Ensure owner always has correct organization_id and org_role.
+      // Do NOT touch onboarded — owners must complete the onboarding wizard on first login.
       await db.execute(sql`
         UPDATE users
         SET organization_id = ${ownedOrgId},
             org_role        = 'admin',
-            onboarded       = true,
             updated_at      = NOW()
         WHERE id = ${user.id}
           AND (
             organization_id IS DISTINCT FROM ${ownedOrgId}
             OR org_role     IS DISTINCT FROM 'admin'
-            OR onboarded    IS DISTINCT FROM true
           )
       `);
     } else {

@@ -45,7 +45,7 @@ const PLANS: PlanCard[] = [
     badgeColor: "bg-slate-500",
     icon: CheckCircle2,
     iconBg: "bg-slate-100 text-slate-600",
-    features: ["Dashboard & Overview", "Up to 50 Leads", "Properties Management", "Dealers Directory", "Calendar"],
+    features: ["Dashboard & Overview", "Basic Leads & Contacts", "Dealers Directory", "Calendar"],
     cta: "Get Started Free",
   },
   {
@@ -56,7 +56,7 @@ const PLANS: PlanCard[] = [
     badgeColor: "bg-blue-500",
     icon: Zap,
     iconBg: "bg-blue-50 text-blue-600",
-    features: ["Everything in Free", "WhatsApp & Facebook Lead Ads", "Analytics & Insights", "Documents Storage", "Property Calculator"],
+    features: ["Everything in Free", "Properties Management", "Analytics & Reports", "Documents Storage", "Property Calculator"],
     cta: "Start Free Trial",
   },
   {
@@ -67,7 +67,7 @@ const PLANS: PlanCard[] = [
     badgeColor: "bg-purple-500",
     icon: Users2,
     iconBg: "bg-purple-50 text-purple-600",
-    features: ["Everything in Starter", "Team Management", "Deals Pipeline", "Lead Assignment Rules", "Multi-Agent Features"],
+    features: ["Everything in Starter", "WhatsApp & Facebook Lead Ads", "Team Management", "Deals Pipeline", "AI Chatbot"],
     cta: "Start Free Trial",
   },
   {
@@ -78,7 +78,7 @@ const PLANS: PlanCard[] = [
     badgeColor: "bg-amber-500",
     icon: Brain,
     iconBg: "bg-amber-50 text-amber-600",
-    features: ["Everything in Professional", "AI Intelligence & Chatbot", "Automations Builder", "Advanced Reporting", "Priority Support"],
+    features: ["Everything in Professional", "AI Intelligence Suite", "Advanced Automations", "Advanced Reporting", "Priority Support"],
     cta: "Start Free Trial",
   },
 ]
