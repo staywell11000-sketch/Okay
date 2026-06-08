@@ -6,9 +6,10 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import {
   Users2, Plus, Shield, Phone, Mail, MoreHorizontal,
-  Loader2, Pencil, Trash2, Save, X, ClipboardList,
-  ChevronRight, UserCheck, XCircle, TrendingUp, Star,
-  ChevronDown,
+  Loader2, Trash2, X, ClipboardList, UserCheck, UserX,
+  TrendingUp, Star, ChevronDown, Key, Copy, CheckCheck,
+  Send, ShieldCheck, ShieldX, Settings2, Users, Clock,
+  AlertTriangle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -21,18 +22,43 @@ import {
 } from "@/components/ui/alert-dialog"
 import { surfaceInputClass, surfaceSelectClass } from "@/lib/ui-classes"
 import {
-  useTeamMembers, useTeamMember, useCreateTeamMember, useUpdateTeamMember,
+  useTeamMembers, useCreateTeamMember, useUpdateTeamMember,
   useDeleteTeamMember, useAssignLead, TeamMember, TeamRole, CreateMemberInput,
 } from "@/lib/team-api"
-import { useLeads } from "@/lib/leads-api"
+import {
+  useOrgMembers, useInvitations, useCreateInvitation, useDeleteInvitation,
+  useUpdateMemberStatus, useUpdateMemberRole, usePasswordReset,
+  useRolePermissions, useUpdateRolePermissions, OrgMember,
+} from "@/lib/org-members-api"
+import { usePermissions } from "@/lib/permissions-context"
 import { toast } from "sonner"
+import { useAuth } from "@/lib/auth-context"
+const RESOURCES = [
+  "dashboard", "leads", "messages", "properties", "dealers",
+  "analytics", "ai_intelligence", "automations", "team",
+  "deals", "documents", "calendar", "settings",
+] as const
 
-const ROLES: TeamRole[] = ["admin", "manager", "agent"]
+const ACTIONS = ["view", "create", "edit", "delete"] as const
 
-const roleConfig: Record<TeamRole, { label: string; color: string; bg: string }> = {
+type TabId = "members" | "invitations" | "permissions" | "agents"
+
+const ORG_ROLES = ["admin", "manager", "agent", "custom"] as const
+type OrgRoleType = typeof ORG_ROLES[number]
+
+const roleConfig: Record<OrgRoleType, { label: string; color: string; bg: string }> = {
   admin:   { label: "Admin",   color: "text-red-500",     bg: "bg-red-500/10 border-red-500/20" },
   manager: { label: "Manager", color: "text-purple-500",  bg: "bg-purple-500/10 border-purple-500/20" },
   agent:   { label: "Agent",   color: "text-primary",     bg: "bg-primary/10 border-primary/20" },
+  custom:  { label: "Custom",  color: "text-amber-500",   bg: "bg-amber-500/10 border-amber-500/20" },
+}
+
+const resourceLabels: Record<string, string> = {
+  dashboard: "Dashboard", leads: "Leads", messages: "Messages",
+  properties: "Properties", dealers: "Dealers", analytics: "Analytics",
+  ai_intelligence: "AI Intelligence", automations: "Automations",
+  team: "Team", deals: "Deals", documents: "Documents",
+  calendar: "Calendar", settings: "Settings",
 }
 
 function initials(name: string | null | undefined) {
@@ -44,17 +70,821 @@ function fmtDate(iso: string | null | undefined) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
 }
 
-// ── Add / Edit Member Modal ──────────────────────────────────────────────────
+// ── Invite Modal ─────────────────────────────────────────────────────────────
 
-type MemberFormProps = {
+function InviteModal({ onClose }: { onClose: () => void }) {
+  const createInvite = useCreateInvitation()
+  const [form, setForm] = useState({ name: "", email: "", orgRole: "agent" })
+  const [result, setResult] = useState<{ invitationCode: string } | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.name.trim() || !form.email.trim()) {
+      toast.error("Name and email are required")
+      return
+    }
+    try {
+      const data = await createInvite.mutateAsync(form)
+      setResult(data)
+      toast.success("Invitation created")
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to create invitation")
+    }
+  }
+
+  const copyCode = () => {
+    if (result?.invitationCode) {
+      navigator.clipboard.writeText(result.invitationCode)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="glass-card w-full max-w-md overflow-hidden"
+      >
+        <div className="flex items-center justify-between border-b border-border/50 p-4">
+          <p className="font-semibold text-foreground">Invite Team Member</p>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {!result ? (
+          <form onSubmit={handleSubmit} className="space-y-4 p-5">
+            <div className="space-y-3">
+              <Input
+                placeholder="Full name *"
+                value={form.name}
+                onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                className={surfaceInputClass}
+                required
+              />
+              <Input
+                type="email"
+                placeholder="Email address *"
+                value={form.email}
+                onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
+                className={surfaceInputClass}
+                required
+              />
+              <div className="relative">
+                <select
+                  value={form.orgRole}
+                  onChange={(e) => setForm((p) => ({ ...p, orgRole: e.target.value }))}
+                  className={surfaceSelectClass}
+                >
+                  {ORG_ROLES.map((r) => (
+                    <option key={r} value={r}>{roleConfig[r].label}</option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={onClose} className="border-border/50">Cancel</Button>
+              <Button type="submit" disabled={createInvite.isPending} className="bg-primary hover:bg-primary/90 gap-2">
+                {createInvite.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                Generate Invitation
+              </Button>
+            </div>
+          </form>
+        ) : (
+          <div className="space-y-5 p-5">
+            <div className="flex flex-col items-center gap-3 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10">
+                <ShieldCheck className="h-6 w-6 text-emerald-500" />
+              </div>
+              <div>
+                <p className="font-semibold text-foreground">Invitation Created!</p>
+                <p className="text-sm text-muted-foreground">Share this code with {form.name}</p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
+              <p className="mb-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">Invitation Code</p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-mono text-3xl font-bold tracking-widest text-foreground">
+                  {result.invitationCode}
+                </p>
+                <Button size="sm" variant="outline" onClick={copyCode} className="shrink-0 border-border/50">
+                  {copied ? <CheckCheck className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2.5">
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                <strong>Instructions:</strong> Ask {form.name} to visit the CRM and click "Accept Invitation". They'll enter their email <strong>{form.email}</strong> and this code to create their account.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={onClose} className="border-border/50">Done</Button>
+            </div>
+          </div>
+        )}
+      </motion.div>
+    </div>
+  )
+}
+
+// ── Member Row ────────────────────────────────────────────────────────────────
+
+function MemberRow({ member, isCurrentUser }: { member: OrgMember; isCurrentUser: boolean }) {
+  const updateStatus = useUpdateMemberStatus()
+  const updateRole = useUpdateMemberRole()
+  const passwordReset = usePasswordReset()
+
+  const cfg = roleConfig[member.orgRole as OrgRoleType] ?? roleConfig.agent
+
+  const handleStatus = async (isActive: boolean) => {
+    try {
+      await updateStatus.mutateAsync({ userId: member.id, isActive })
+      toast.success(isActive ? "Member reactivated" : "Member deactivated")
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to update status")
+    }
+  }
+
+  const handleRole = async (orgRole: string) => {
+    try {
+      await updateRole.mutateAsync({ userId: member.id, orgRole })
+      toast.success("Role updated")
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to update role")
+    }
+  }
+
+  const handlePasswordReset = async () => {
+    try {
+      await passwordReset.mutateAsync(member.id)
+      toast.success("Password reset email sent")
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to reset password")
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex items-center justify-between gap-4 px-4 py-3.5 hover:bg-secondary/20 transition-colors border-b border-border/20 last:border-0"
+    >
+      <div className="flex items-center gap-3 min-w-0">
+        <div className={cn(
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold",
+          member.isActive ? "bg-gradient-to-br from-primary/80 to-accent/80 text-primary-foreground" : "bg-muted text-muted-foreground"
+        )}>
+          {initials(member.name)}
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <p className={cn("truncate text-sm font-medium", !member.isActive && "text-muted-foreground line-through")}>
+              {member.name}
+            </p>
+            {member.isOwner && (
+              <Badge variant="outline" className="h-4 text-[9px] border-amber-500/30 text-amber-600 bg-amber-500/10 shrink-0">Owner</Badge>
+            )}
+            {isCurrentUser && (
+              <Badge variant="outline" className="h-4 text-[9px] border-primary/30 text-primary bg-primary/5 shrink-0">You</Badge>
+            )}
+          </div>
+          <p className="truncate text-xs text-muted-foreground">{member.email}</p>
+        </div>
+      </div>
+
+      <div className="hidden sm:flex items-center gap-2 shrink-0">
+        <Badge variant="outline" className={cn("text-xs capitalize", cfg.bg, cfg.color)}>
+          {cfg.label}
+        </Badge>
+        <Badge variant="outline" className={cn("text-xs", member.isActive ? "border-emerald-500/20 text-emerald-600 bg-emerald-500/10" : "border-border/40 text-muted-foreground")}>
+          {member.isActive ? "Active" : "Inactive"}
+        </Badge>
+        <p className="text-xs text-muted-foreground hidden lg:block">{fmtDate(member.createdAt)}</p>
+      </div>
+
+      {!member.isOwner && !isCurrentUser && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <div className="px-2 py-1.5">
+              <p className="text-xs font-medium text-muted-foreground">Change Role</p>
+            </div>
+            {ORG_ROLES.filter((r) => r !== "admin" || !member.isOwner).map((r) => (
+              <DropdownMenuItem
+                key={r}
+                onClick={() => handleRole(r)}
+                className={cn("gap-2 text-xs", member.orgRole === r && "text-primary font-medium")}
+              >
+                <div className={cn("h-2 w-2 rounded-full", roleConfig[r].color.replace("text-", "bg-"))} />
+                {roleConfig[r].label}
+                {member.orgRole === r && " ✓"}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handlePasswordReset} className="gap-2">
+              <Key className="h-3.5 w-3.5" /> Reset Password
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {member.isActive ? (
+              <DropdownMenuItem
+                onClick={() => handleStatus(false)}
+                className="gap-2 text-amber-600 focus:text-amber-600"
+              >
+                <UserX className="h-3.5 w-3.5" /> Deactivate
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem
+                onClick={() => handleStatus(true)}
+                className="gap-2 text-emerald-600 focus:text-emerald-600"
+              >
+                <UserCheck className="h-3.5 w-3.5" /> Reactivate
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </motion.div>
+  )
+}
+
+// ── Permissions Matrix ────────────────────────────────────────────────────────
+
+function PermissionsMatrix() {
+  const { data, isLoading } = useRolePermissions()
+  const updateRolePerms = useUpdateRolePermissions()
+  const [editingRole, setEditingRole] = useState<string | null>(null)
+  const [draft, setDraft] = useState<Record<string, boolean>>({})
+
+  const startEdit = (roleName: string) => {
+    const rolePerms = data?.roles[roleName] ?? []
+    const map: Record<string, boolean> = {}
+    for (const res of RESOURCES) {
+      for (const act of ACTIONS) {
+        map[`${res}:${act}`] = rolePerms.some((p) => p.resource === res && p.action === act)
+      }
+    }
+    setDraft(map)
+    setEditingRole(roleName)
+  }
+
+  const cancelEdit = () => { setEditingRole(null); setDraft({}) }
+
+  const saveEdit = async () => {
+    if (!editingRole) return
+    const permissions = Object.entries(draft)
+      .filter(([, v]) => v)
+      .map(([key]) => {
+        const [resource, action] = key.split(":")
+        return { resource, action }
+      })
+    try {
+      await updateRolePerms.mutateAsync({ roleName: editingRole, permissions })
+      toast.success(`${editingRole} permissions updated`)
+      setEditingRole(null)
+      setDraft({})
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to update permissions")
+    }
+  }
+
+  const toggle = (res: string, act: string) => {
+    const key = `${res}:${act}`
+    setDraft((p) => ({ ...p, [key]: !p[key] }))
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-16">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  const roles = ["manager", "agent", "custom"] as const
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="font-semibold text-foreground">Role Permissions</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Configure what each role can access. Admin role always has full access.</p>
+        </div>
+      </div>
+
+      {roles.map((roleName) => {
+        const isEditing = editingRole === roleName
+        const rolePerms = isEditing ? null : data?.roles[roleName] ?? []
+        const cfg = roleConfig[roleName]
+
+        return (
+          <div key={roleName} className="glass-card overflow-hidden">
+            <div className="flex items-center justify-between border-b border-border/30 px-4 py-3">
+              <Badge variant="outline" className={cn("capitalize font-semibold", cfg.bg, cfg.color)}>
+                {cfg.label}
+              </Badge>
+              <div className="flex gap-2">
+                {isEditing ? (
+                  <>
+                    <Button size="sm" variant="outline" onClick={cancelEdit} className="h-7 text-xs border-border/50">Cancel</Button>
+                    <Button size="sm" onClick={saveEdit} disabled={updateRolePerms.isPending} className="h-7 text-xs bg-primary hover:bg-primary/90">
+                      {updateRolePerms.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+                    </Button>
+                  </>
+                ) : (
+                  <Button size="sm" variant="outline" onClick={() => startEdit(roleName)} className="h-7 gap-1 text-xs border-border/50">
+                    <Settings2 className="h-3 w-3" /> Edit
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border/20">
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider w-40">Resource</th>
+                    {ACTIONS.map((a) => (
+                      <th key={a} className="px-3 py-2 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider capitalize">
+                        {a}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/10">
+                  {RESOURCES.map((res) => (
+                    <tr key={res} className="hover:bg-secondary/10 transition-colors">
+                      <td className="px-4 py-2 text-xs font-medium text-foreground">
+                        {resourceLabels[res] ?? res}
+                      </td>
+                      {ACTIONS.map((act) => {
+                        const key = `${res}:${act}`
+                        const checked = isEditing
+                          ? draft[key] ?? false
+                          : (rolePerms as any[])?.some((p: any) => p.resource === res && p.action === act) ?? false
+                        return (
+                          <td key={act} className="px-3 py-2 text-center">
+                            {isEditing ? (
+                              <button
+                                onClick={() => toggle(res, act)}
+                                className={cn(
+                                  "mx-auto flex h-5 w-5 items-center justify-center rounded border transition-colors",
+                                  checked
+                                    ? "bg-primary border-primary text-primary-foreground"
+                                    : "border-border/50 hover:border-primary/50"
+                                )}
+                              >
+                                {checked && <CheckCheck className="h-3 w-3" />}
+                              </button>
+                            ) : (
+                              <div className={cn(
+                                "mx-auto h-2.5 w-2.5 rounded-full",
+                                checked ? "bg-emerald-500" : "bg-border/30"
+                              )} />
+                            )}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Invitations Tab ───────────────────────────────────────────────────────────
+
+function InvitationsTab({ onInvite }: { onInvite: () => void }) {
+  const { data: invitations = [], isLoading } = useInvitations()
+  const deleteInvite = useDeleteInvitation()
+  const [revokeId, setRevokeId] = useState<number | null>(null)
+
+  const pending = invitations.filter((i) => !i.acceptedAt && new Date(i.expiresAt) > new Date())
+  const accepted = invitations.filter((i) => !!i.acceptedAt)
+  const expired = invitations.filter((i) => !i.acceptedAt && new Date(i.expiresAt) <= new Date())
+
+  const handleRevoke = async () => {
+    if (!revokeId) return
+    try {
+      await deleteInvite.mutateAsync(revokeId)
+      toast.success("Invitation revoked")
+    } catch {
+      toast.error("Failed to revoke invitation")
+    }
+    setRevokeId(null)
+  }
+
+  if (isLoading) return <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          {pending.length} pending · {accepted.length} accepted
+        </p>
+        <Button onClick={onInvite} className="gap-2 bg-primary hover:bg-primary/90 h-8 text-xs">
+          <Plus className="h-3.5 w-3.5" /> New Invitation
+        </Button>
+      </div>
+
+      {invitations.length === 0 ? (
+        <div className="glass-card flex flex-col items-center gap-3 py-16 text-center">
+          <Send className="h-8 w-8 text-muted-foreground/40" />
+          <p className="font-medium text-foreground">No invitations yet</p>
+          <p className="text-sm text-muted-foreground">Invite your team members to join the CRM.</p>
+          <Button onClick={onInvite} className="mt-2 gap-2 bg-primary hover:bg-primary/90">
+            <Plus className="h-4 w-4" /> Invite Member
+          </Button>
+        </div>
+      ) : (
+        <div className="glass-card overflow-hidden divide-y divide-border/20">
+          {[...pending, ...accepted, ...expired].map((inv) => {
+            const isPending = !inv.acceptedAt && new Date(inv.expiresAt) > new Date()
+            const isExpired = !inv.acceptedAt && new Date(inv.expiresAt) <= new Date()
+            const cfg = roleConfig[inv.orgRole as OrgRoleType] ?? roleConfig.agent
+            return (
+              <div key={inv.id} className="flex items-center justify-between px-4 py-3.5">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={cn(
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold",
+                    inv.acceptedAt ? "bg-emerald-500/10 text-emerald-600" :
+                    isExpired ? "bg-muted text-muted-foreground" :
+                    "bg-amber-500/10 text-amber-600"
+                  )}>
+                    {initials(inv.name)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">{inv.name}</p>
+                    <p className="truncate text-xs text-muted-foreground">{inv.email}</p>
+                  </div>
+                </div>
+                <div className="hidden sm:flex items-center gap-2 shrink-0 ml-4">
+                  <Badge variant="outline" className={cn("text-xs", cfg.bg, cfg.color)}>{cfg.label}</Badge>
+                  {isPending && (
+                    <Badge variant="outline" className="text-xs border-amber-500/20 text-amber-600 bg-amber-500/10 gap-1">
+                      <Clock className="h-2.5 w-2.5" /> Pending
+                    </Badge>
+                  )}
+                  {inv.acceptedAt && (
+                    <Badge variant="outline" className="text-xs border-emerald-500/20 text-emerald-600 bg-emerald-500/10">Accepted</Badge>
+                  )}
+                  {isExpired && (
+                    <Badge variant="outline" className="text-xs border-border/40 text-muted-foreground">Expired</Badge>
+                  )}
+                  <p className="text-xs text-muted-foreground hidden lg:block">
+                    Code: <span className="font-mono font-bold">{inv.invitationCode}</span>
+                  </p>
+                </div>
+                {isPending && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
+                    onClick={() => setRevokeId(inv.id)}
+                    title="Revoke invitation"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      <AlertDialog open={!!revokeId} onOpenChange={() => setRevokeId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revoke Invitation?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the invitation. The invited person will no longer be able to use this code.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRevoke} className="bg-destructive hover:bg-destructive/90">Revoke</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  )
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+
+export default function TeamPage() {
+  const { user } = useAuth()
+  const { isAdmin } = usePermissions()
+  const [activeTab, setActiveTab] = useState<TabId>("members")
+  const [showInvite, setShowInvite] = useState(false)
+
+  const { data: orgMembers = [], isLoading: orgLoading } = useOrgMembers()
+  const { data: legacyMembers = [], isLoading: legacyLoading } = useTeamMembers()
+
+  const activeMembers = orgMembers.filter((m) => m.isActive)
+  const adminCount = orgMembers.filter((m) => m.orgRole === "admin" || m.isOwner).length
+
+  const tabs: { id: TabId; label: string; icon: React.ElementType; count?: number }[] = [
+    { id: "members", label: "Organization Members", icon: Users, count: orgMembers.length },
+    ...(isAdmin ? [
+      { id: "invitations" as TabId, label: "Invitations", icon: Send },
+      { id: "permissions" as TabId, label: "Permissions", icon: Shield },
+    ] : []),
+    { id: "agents", label: "Agent Profiles", icon: Users2, count: legacyMembers.length },
+  ]
+
+  return (
+    <div className="space-y-6">
+      <DashboardPageHeader
+        title="Team Management"
+        description="Manage your organization members, invitations, and permissions."
+        actions={
+          isAdmin && (
+            <Button
+              onClick={() => { setActiveTab("invitations"); setShowInvite(true) }}
+              className="gap-2 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25"
+            >
+              <Plus className="h-4 w-4" /> Invite Member
+            </Button>
+          )
+        }
+      />
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {[
+          { label: "Total Members",  value: orgMembers.length,           icon: Users,    color: undefined },
+          { label: "Active",         value: activeMembers.length,         icon: UserCheck, color: "text-emerald-500" },
+          { label: "Admins",         value: adminCount,                   icon: Shield,   color: "text-red-500" },
+          { label: "Agent Profiles", value: legacyMembers.length,         icon: Users2,   color: "text-primary" },
+        ].map((s, i) => (
+          <motion.div
+            key={s.label}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.07 }}
+            className="glass-card p-5"
+          >
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">{s.label}</p>
+              <s.icon className={cn("h-4 w-4", s.color ?? "text-muted-foreground")} />
+            </div>
+            <p className="mt-1 text-2xl font-bold text-foreground">{s.value}</p>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-border/30">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={cn(
+              "flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors",
+              activeTab === tab.id
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <tab.icon className="h-4 w-4" />
+            {tab.label}
+            {tab.count !== undefined && (
+              <Badge variant="secondary" className="h-4 text-[10px] px-1 min-w-[16px]">{tab.count}</Badge>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      <AnimatePresence mode="wait">
+        {activeTab === "members" && (
+          <motion.div key="members" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            {orgLoading ? (
+              <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+            ) : orgMembers.length === 0 ? (
+              <div className="glass-card flex flex-col items-center gap-3 py-16 text-center">
+                <Users className="h-8 w-8 text-muted-foreground/40" />
+                <p className="font-medium text-foreground">No organization members yet</p>
+                {isAdmin && (
+                  <Button onClick={() => { setActiveTab("invitations"); setShowInvite(true) }} className="mt-2 gap-2 bg-primary hover:bg-primary/90">
+                    <Plus className="h-4 w-4" /> Invite Member
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="glass-card overflow-hidden">
+                <div className="flex items-center justify-between border-b border-border/30 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    {orgMembers.length} member{orgMembers.length !== 1 ? "s" : ""}
+                  </p>
+                </div>
+                <div>
+                  {orgMembers.map((m) => (
+                    <MemberRow key={m.id} member={m} isCurrentUser={m.id === user?.id} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {activeTab === "invitations" && isAdmin && (
+          <motion.div key="invitations" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <InvitationsTab onInvite={() => setShowInvite(true)} />
+          </motion.div>
+        )}
+
+        {activeTab === "permissions" && isAdmin && (
+          <motion.div key="permissions" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <PermissionsMatrix />
+          </motion.div>
+        )}
+
+        {activeTab === "agents" && (
+          <motion.div key="agents" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <LegacyAgentsTab />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {showInvite && <InviteModal onClose={() => setShowInvite(false)} />}
+    </div>
+  )
+}
+
+// ── Legacy Agents Tab (preserves existing functionality) ──────────────────────
+
+function LegacyAgentsTab() {
+  const { data: members = [], isLoading, error } = useTeamMembers()
+  const createMember = useCreateTeamMember()
+  const updateMember = useUpdateTeamMember()
+  const deleteMember = useDeleteTeamMember()
+  const assignLead = useAssignLead()
+
+  const [showCreate, setShowCreate] = useState(false)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [deleteId, setDeleteId] = useState<number | null>(null)
+
+  const legacyRoles = ["admin", "manager", "agent"] as const
+  type LegacyRole = typeof legacyRoles[number]
+  const legacyRoleConfig = roleConfig
+
+  const handleCreate = async (data: CreateMemberInput) => {
+    try {
+      await createMember.mutateAsync(data)
+      toast.success("Agent profile added")
+      setShowCreate(false)
+    } catch {
+      toast.error("Failed to add agent")
+    }
+  }
+
+  const handleUpdate = async (id: number, data: CreateMemberInput) => {
+    try {
+      await updateMember.mutateAsync({ id, updates: data })
+      toast.success("Agent updated")
+      setEditingId(null)
+    } catch {
+      toast.error("Failed to update agent")
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deleteId) return
+    try {
+      await deleteMember.mutateAsync(deleteId)
+      toast.success("Agent removed")
+    } catch {
+      toast.error("Failed to remove agent")
+    }
+    setDeleteId(null)
+  }
+
+  if (isLoading) return <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">Agent profiles for lead assignment and performance tracking</p>
+        <Button onClick={() => setShowCreate(true)} className="gap-2 bg-primary hover:bg-primary/90 h-8 text-xs">
+          <Plus className="h-3.5 w-3.5" /> Add Agent
+        </Button>
+      </div>
+
+      <AnimatePresence>
+        {showCreate && (
+          <AgentForm
+            title="Add Agent Profile"
+            onSave={handleCreate}
+            onCancel={() => setShowCreate(false)}
+            saving={createMember.isPending}
+          />
+        )}
+      </AnimatePresence>
+
+      {members.length === 0 ? (
+        <div className="glass-card flex flex-col items-center gap-3 py-16 text-center">
+          <Users2 className="h-8 w-8 text-muted-foreground/40" />
+          <p className="font-medium text-foreground">No agent profiles yet</p>
+          <Button onClick={() => setShowCreate(true)} className="mt-2 gap-2 bg-primary hover:bg-primary/90">
+            <Plus className="h-4 w-4" /> Add Agent
+          </Button>
+        </div>
+      ) : (
+        <div className="glass-card overflow-hidden divide-y divide-border/20">
+          {members.map((m) => {
+            const cfg = legacyRoleConfig[(m.role as LegacyRole) ?? "agent"] ?? legacyRoleConfig.agent
+            const isEditing = editingId === m.id
+            return (
+              <div key={m.id}>
+                {isEditing ? (
+                  <div className="p-4">
+                    <AgentForm
+                      title={`Edit — ${m.name}`}
+                      initial={m}
+                      onSave={(data) => handleUpdate(m.id, data)}
+                      onCancel={() => setEditingId(null)}
+                      saving={updateMember.isPending}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-4 px-4 py-3.5 hover:bg-secondary/20 transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/80 to-accent/80 text-sm font-bold text-primary-foreground">
+                        {initials(m.name)}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-foreground">{m.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">{m.email}</p>
+                      </div>
+                    </div>
+                    <div className="hidden sm:flex items-center gap-2 shrink-0">
+                      <Badge variant="outline" className={cn("text-xs capitalize", cfg.bg, cfg.color)}>{cfg.label}</Badge>
+                      <Badge variant="outline" className="text-xs">{m.assignedLeadsCount} leads</Badge>
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setEditingId(m.id)} className="gap-2">
+                          <Settings2 className="h-3.5 w-3.5" /> Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => setDeleteId(m.id)} className="gap-2 text-destructive focus:text-destructive">
+                          <Trash2 className="h-3.5 w-3.5" /> Remove
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Agent Profile?</AlertDialogTitle>
+            <AlertDialogDescription>This will remove the agent profile. This action cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Remove</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  )
+}
+
+function AgentForm({ initial, onSave, onCancel, saving, title }: {
   initial?: Partial<CreateMemberInput>
   onSave: (data: CreateMemberInput) => Promise<void>
   onCancel: () => void
   saving: boolean
   title: string
-}
-
-function MemberForm({ initial, onSave, onCancel, saving, title }: MemberFormProps) {
+}) {
   const [form, setForm] = useState<CreateMemberInput>({
     name: initial?.name ?? "",
     email: initial?.email ?? "",
@@ -63,10 +893,8 @@ function MemberForm({ initial, onSave, onCancel, saving, title }: MemberFormProp
     performanceScore: initial?.performanceScore ?? null,
     dateOfEmployment: initial?.dateOfEmployment ?? "",
   })
-  const set = <K extends keyof CreateMemberInput>(k: K, v: CreateMemberInput[K]) =>
-    setForm((p) => ({ ...p, [k]: v }))
 
-  const handleSave = async (): Promise<void> => {
+  const handleSave = async () => {
     if (!form.name.trim()) { toast.error("Name is required"); return }
     if (!form.email.trim()) { toast.error("Email is required"); return }
     await onSave(form)
@@ -79,579 +907,28 @@ function MemberForm({ initial, onSave, onCancel, saving, title }: MemberFormProp
       exit={{ opacity: 0, height: 0 }}
       className="glass-card overflow-hidden border-primary/20"
     >
-      <div className="p-5">
-        <p className="mb-4 font-semibold text-foreground">{title}</p>
+      <div className="p-4">
+        <p className="mb-3 text-sm font-semibold text-foreground">{title}</p>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Input
-            placeholder="Full name *"
-            value={form.name}
-            onChange={(e) => set("name", e.target.value)}
-            className={surfaceInputClass}
-          />
-          <Input
-            placeholder="Email address *"
-            type="email"
-            value={form.email}
-            onChange={(e) => set("email", e.target.value)}
-            className={surfaceInputClass}
-          />
-          <Input
-            placeholder="Phone number"
-            value={form.phone ?? ""}
-            onChange={(e) => set("phone", e.target.value)}
-            className={surfaceInputClass}
-          />
+          <Input placeholder="Full name *" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className={surfaceInputClass} />
+          <Input placeholder="Email address *" type="email" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} className={surfaceInputClass} />
+          <Input placeholder="Phone number" value={form.phone ?? ""} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} className={surfaceInputClass} />
           <div className="relative">
-            <select
-              value={form.role}
-              onChange={(e) => set("role", e.target.value as TeamRole)}
-              className={surfaceSelectClass}
-            >
-              {ROLES.map((r) => (
-                <option key={r} value={r}>{roleConfig[r].label}</option>
+            <select value={form.role} onChange={(e) => setForm((p) => ({ ...p, role: e.target.value as TeamRole }))} className={surfaceSelectClass}>
+              {(["admin", "manager", "agent"] as TeamRole[]).map((r) => (
+                <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
               ))}
             </select>
             <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground pl-0.5">Date of Employment</label>
-            <Input
-              type="date"
-              value={form.dateOfEmployment ?? ""}
-              onChange={(e) => set("dateOfEmployment", e.target.value)}
-              className={surfaceInputClass}
-            />
           </div>
         </div>
         <div className="mt-3 flex justify-end gap-2">
           <Button variant="outline" onClick={onCancel} className="border-border/50">Cancel</Button>
           <Button onClick={handleSave} disabled={saving} className="bg-primary hover:bg-primary/90">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Member"}
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
           </Button>
         </div>
       </div>
     </motion.div>
-  )
-}
-
-// ── Assign Lead Modal ────────────────────────────────────────────────────────
-
-type AssignLeadModalProps = { memberId: number; memberName: string; onClose: () => void }
-
-function AssignLeadModal({ memberId, memberName, onClose }: AssignLeadModalProps) {
-  const { data: leads = [], isLoading } = useLeads()
-  const assignLead = useAssignLead()
-  const unassigned = leads.filter((l) => !l.assignedTo || l.assignedTo === "")
-
-  const handle = async (leadId: number) => {
-    try {
-      await assignLead.mutateAsync({ memberId, leadId })
-      toast.success("Lead assigned")
-      onClose()
-    } catch {
-      toast.error("Failed to assign lead")
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="glass-card w-full max-w-md overflow-hidden"
-      >
-        <div className="flex items-center justify-between border-b border-border/50 p-4">
-          <p className="font-semibold text-foreground">Assign lead to {memberName}</p>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="max-h-80 overflow-y-auto p-2">
-          {isLoading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            </div>
-          ) : unassigned.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">No unassigned leads available.</p>
-          ) : (
-            unassigned.map((lead) => (
-              <button
-                key={lead.id}
-                onClick={() => handle(lead.id)}
-                className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left hover:bg-secondary/40 transition-colors"
-              >
-                <div>
-                  <p className="text-sm font-medium text-foreground">{lead.name}</p>
-                  <p className="text-xs text-muted-foreground">{lead.email}</p>
-                </div>
-                <Badge variant="outline" className="text-xs">{lead.status}</Badge>
-              </button>
-            ))
-          )}
-        </div>
-      </motion.div>
-    </div>
-  )
-}
-
-// ── Member Detail Panel ──────────────────────────────────────────────────────
-
-type DetailPanelProps = { memberId: number; onClose: () => void; onEdit: () => void }
-
-function MemberDetailPanel({ memberId, onClose, onEdit }: DetailPanelProps) {
-  const { data: member, isLoading } = useTeamMember(memberId)
-  const [showAssign, setShowAssign] = useState(false)
-  const cfg = member ? roleConfig[member.role as TeamRole] : roleConfig.agent
-
-  return (
-    <>
-      <motion.div
-        key={memberId}
-        initial={{ opacity: 0, x: 20 }}
-        animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: 20 }}
-        className="glass-card flex h-full flex-col overflow-hidden"
-      >
-        {/* Panel header */}
-        <div className="flex items-center justify-between border-b border-border/50 p-4">
-          <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Agent Profile</p>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-
-        {isLoading ? (
-          <div className="flex flex-1 items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-          </div>
-        ) : !member ? (
-          <div className="flex flex-1 items-center justify-center">
-            <p className="text-sm text-muted-foreground">Member not found.</p>
-          </div>
-        ) : (
-          <div className="flex-1 overflow-y-auto p-5 space-y-5">
-            {/* Avatar + name */}
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/80 to-accent/80 text-lg font-bold text-primary-foreground">
-                  {initials(member.name)}
-                </div>
-                <div>
-                  <p className="text-xl font-bold text-foreground">{member.name}</p>
-                  <Badge variant="outline" className={cn("mt-1 text-xs", cfg.bg, cfg.color)}>
-                    {cfg.label}
-                  </Badge>
-                </div>
-              </div>
-              <Button variant="outline" size="sm" onClick={onEdit} className="h-8 gap-1 border-border/50 text-xs">
-                <Pencil className="h-3.5 w-3.5" /> Edit
-              </Button>
-            </div>
-
-            {/* Contact */}
-            <div className="space-y-2 rounded-xl border border-border/40 bg-secondary/10 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Contact</p>
-              <div className="flex items-center gap-2 text-sm text-foreground">
-                <Mail className="h-3.5 w-3.5 text-muted-foreground" />{member.email}
-              </div>
-              {member.phone && (
-                <div className="flex items-center gap-2 text-sm text-foreground">
-                  <Phone className="h-3.5 w-3.5 text-muted-foreground" />{member.phone}
-                </div>
-              )}
-            </div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl border border-border/40 bg-secondary/10 p-4 text-center">
-                <ClipboardList className="mx-auto h-5 w-5 text-primary mb-1" />
-                <p className="text-2xl font-bold text-foreground">{member.assignedLeadsCount}</p>
-                <p className="text-xs text-muted-foreground">Assigned Leads</p>
-              </div>
-              <div className="rounded-xl border border-border/40 bg-secondary/10 p-4 text-center">
-                <Star className="mx-auto h-5 w-5 text-amber-500 mb-1" />
-                <p className="text-2xl font-bold text-foreground">
-                  {member.performanceScore != null ? `${member.performanceScore}%` : "—"}
-                </p>
-                <p className="text-xs text-muted-foreground">Performance</p>
-              </div>
-            </div>
-
-            {/* Performance bar */}
-            {member.performanceScore != null && (
-              <div>
-                <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-                  <span>Performance Score</span>
-                  <span className="font-semibold text-foreground">{member.performanceScore}/100</span>
-                </div>
-                <div className="h-2 rounded-full bg-border/50">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-primary to-accent transition-all"
-                    style={{ width: `${member.performanceScore}%` }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Assigned leads list */}
-            <div>
-              <div className="mb-3 flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Assigned Leads ({member.assignedLeads.length})
-                </p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setShowAssign(true)}
-                  className="h-6 gap-1 border-border/50 text-xs"
-                >
-                  <Plus className="h-3 w-3" /> Assign
-                </Button>
-              </div>
-              {member.assignedLeads.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No leads assigned yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {member.assignedLeads.map((lead) => (
-                    <div
-                      key={lead.id}
-                      className="flex items-center justify-between rounded-lg border border-border/40 bg-secondary/10 px-3 py-2"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-foreground">{lead.name}</p>
-                        <p className="text-xs text-muted-foreground">{lead.email}</p>
-                      </div>
-                      <Badge variant="outline" className="ml-2 flex-shrink-0 text-xs capitalize">
-                        {lead.status}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Meta */}
-            <p className="text-xs text-muted-foreground">
-              Member since {fmtDate(member.createdAt)}
-            </p>
-          </div>
-        )}
-      </motion.div>
-
-      {showAssign && member && (
-        <AssignLeadModal
-          memberId={member.id}
-          memberName={member.name}
-          onClose={() => setShowAssign(false)}
-        />
-      )}
-    </>
-  )
-}
-
-// ── Main Page ────────────────────────────────────────────────────────────────
-
-export default function TeamPage() {
-  const { data: members = [], isLoading, error } = useTeamMembers()
-  const createMember = useCreateTeamMember()
-  const updateMember = useUpdateTeamMember()
-  const deleteMember = useDeleteTeamMember()
-
-  const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [showCreate, setShowCreate] = useState(false)
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [deleteId, setDeleteId] = useState<number | null>(null)
-  const [roleFilter, setRoleFilter] = useState<TeamRole | "all">("all")
-
-  const editingMember = members.find((m) => m.id === editingId)
-
-  const filtered = roleFilter === "all"
-    ? members
-    : members.filter((m) => m.role === roleFilter)
-
-  const totalLeads = members.reduce((s, m) => s + m.assignedLeadsCount, 0)
-  const avgScore = members.length
-    ? Math.round(members.reduce((s, m) => s + (m.performanceScore ?? 0), 0) / members.length)
-    : 0
-
-  const handleCreate = async (data: CreateMemberInput) => {
-    try {
-      await createMember.mutateAsync(data)
-      toast.success("Agent added")
-      setShowCreate(false)
-    } catch {
-      toast.error("Failed to add agent")
-    }
-  }
-
-  const handleUpdate = async (data: CreateMemberInput) => {
-    if (!editingId) return
-    try {
-      await updateMember.mutateAsync({ id: editingId, updates: data })
-      toast.success("Agent updated")
-      setEditingId(null)
-    } catch {
-      toast.error("Failed to update agent")
-    }
-  }
-
-  const handleDelete = async () => {
-    if (!deleteId) return
-    try {
-      if (selectedId === deleteId) setSelectedId(null)
-      await deleteMember.mutateAsync(deleteId)
-      toast.success("Agent removed")
-    } catch {
-      toast.error("Failed to remove agent")
-    }
-    setDeleteId(null)
-  }
-
-  return (
-    <div className="space-y-6">
-      <DashboardPageHeader
-        title="Team Management"
-        description="Manage agents, track performance, and assign leads."
-        actions={
-          <Button
-            onClick={() => setShowCreate(true)}
-            className="gap-2 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25"
-          >
-            <Plus className="h-4 w-4" /> Add Agent
-          </Button>
-        }
-      />
-
-      {/* Add agent form */}
-      <AnimatePresence>
-        {showCreate && (
-          <MemberForm
-            title="Add New Agent"
-            onSave={handleCreate}
-            onCancel={() => setShowCreate(false)}
-            saving={createMember.isPending}
-          />
-        )}
-        {editingId && editingMember && (
-          <MemberForm
-            key={`edit-${editingId}`}
-            title={`Edit — ${editingMember.name}`}
-            initial={editingMember}
-            onSave={handleUpdate}
-            onCancel={() => setEditingId(null)}
-            saving={updateMember.isPending}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {[
-          { label: "Total Agents",    value: members.length,                                        icon: Users2 },
-          { label: "Admins",          value: members.filter((m) => m.role === "admin").length,       icon: Shield, color: "text-red-500" },
-          { label: "Total Leads",     value: totalLeads,                                             icon: ClipboardList },
-          { label: "Avg. Performance",value: members.length ? `${avgScore}%` : "—",                 icon: TrendingUp, color: "text-emerald-500" },
-        ].map((s, i) => (
-          <motion.div
-            key={s.label}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.07 }}
-            className="glass-card p-5"
-          >
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">{s.label}</p>
-              <s.icon className={cn("h-4 w-4", s.color ?? "text-primary")} />
-            </div>
-            <p className="mt-1 text-2xl font-bold text-foreground">{s.value}</p>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Role filter tabs */}
-      <div className="flex flex-wrap gap-2">
-        {(["all", ...ROLES] as const).map((r) => {
-          const count = r === "all" ? members.length : members.filter((m) => m.role === r).length
-          const active = roleFilter === r
-          const cfg = r === "all" ? null : roleConfig[r]
-          return (
-            <button
-              key={r}
-              onClick={() => setRoleFilter(r)}
-              className={cn(
-                "rounded-full border px-4 py-1.5 text-sm font-medium transition-colors capitalize",
-                active
-                  ? r === "all"
-                    ? "bg-primary text-primary-foreground border-transparent"
-                    : cn(cfg!.bg, cfg!.color)
-                  : "border-border/50 text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {r === "all" ? "All" : roleConfig[r].label} ({count})
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Main layout: table + detail panel */}
-      <div className={cn("gap-6", selectedId ? "grid xl:grid-cols-5" : "block")}>
-        {/* Members table */}
-        <div className={cn(selectedId ? "xl:col-span-3" : "")}>
-          {isLoading ? (
-            <div className="flex items-center justify-center py-20">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          ) : error ? (
-            <div className="glass-card flex flex-col items-center gap-3 py-16 text-center">
-              <XCircle className="h-8 w-8 text-destructive" />
-              <p className="font-medium text-foreground">Failed to load team members</p>
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="glass-card flex flex-col items-center gap-3 py-16 text-center">
-              <Users2 className="h-8 w-8 text-muted-foreground/40" />
-              <p className="font-medium text-foreground">
-                {roleFilter === "all" ? "No team members yet" : `No ${roleConfig[roleFilter].label}s yet`}
-              </p>
-              <p className="text-sm text-muted-foreground">Add your first agent to get started.</p>
-              <Button onClick={() => setShowCreate(true)} className="mt-2 gap-2 bg-primary hover:bg-primary/90">
-                <Plus className="h-4 w-4" /> Add Agent
-              </Button>
-            </div>
-          ) : (
-            <div className="glass-card overflow-hidden">
-              {/* Table header */}
-              <div className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-4 border-b border-border/50 px-4 py-3">
-                {["Agent", "Role", "Assigned Leads", "Performance", ""].map((h) => (
-                  <p key={h} className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{h}</p>
-                ))}
-              </div>
-              <div className="divide-y divide-border/30">
-                <AnimatePresence>
-                  {filtered.map((member, i) => {
-                    const cfg = roleConfig[member.role as TeamRole] ?? roleConfig.agent
-                    const isSelected = selectedId === member.id
-                    return (
-                      <motion.div
-                        key={member.id}
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ delay: i * 0.04 }}
-                        onClick={() => setSelectedId(isSelected ? null : member.id)}
-                        className={cn(
-                          "grid grid-cols-[1fr_auto_auto_auto_auto] cursor-pointer items-center gap-4 px-4 py-3.5 transition-colors",
-                          isSelected
-                            ? "bg-primary/5 border-l-2 border-l-primary"
-                            : "hover:bg-secondary/30"
-                        )}
-                      >
-                        {/* Agent info */}
-                        <div className="flex min-w-0 items-center gap-3">
-                          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/80 to-accent/80 text-sm font-bold text-primary-foreground">
-                            {initials(member.name)}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="truncate font-semibold text-foreground">{member.name}</p>
-                            <p className="truncate text-xs text-muted-foreground">{member.email}</p>
-                          </div>
-                        </div>
-
-                        {/* Role */}
-                        <Badge variant="outline" className={cn("text-xs whitespace-nowrap", cfg.bg, cfg.color)}>
-                          {cfg.label}
-                        </Badge>
-
-                        {/* Assigned leads */}
-                        <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
-                          <ClipboardList className="h-3.5 w-3.5 text-muted-foreground" />
-                          {member.assignedLeadsCount}
-                        </div>
-
-                        {/* Performance */}
-                        <div className="flex w-24 items-center gap-2">
-                          {member.performanceScore != null ? (
-                            <>
-                              <div className="h-1.5 flex-1 rounded-full bg-border/50">
-                                <div
-                                  className="h-full rounded-full bg-primary transition-all"
-                                  style={{ width: `${member.performanceScore}%` }}
-                                />
-                              </div>
-                              <span className="text-xs text-muted-foreground w-8 text-right">
-                                {member.performanceScore}%
-                              </span>
-                            </>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
-                        </div>
-
-                        {/* Actions */}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="icon" className="h-7 w-7">
-                              <MoreHorizontal className="h-3.5 w-3.5" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="glass w-40">
-                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setSelectedId(member.id) }}>
-                              <ChevronRight className="mr-2 h-3.5 w-3.5" /> View profile
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setEditingId(member.id) }}>
-                              <Pencil className="mr-2 h-3.5 w-3.5" /> Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={(e) => { e.stopPropagation(); setDeleteId(member.id) }}
-                              className="text-destructive"
-                            >
-                              <Trash2 className="mr-2 h-3.5 w-3.5" /> Remove
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </motion.div>
-                    )
-                  })}
-                </AnimatePresence>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Detail panel */}
-        <AnimatePresence>
-          {selectedId && (
-            <div className="xl:col-span-2">
-              <MemberDetailPanel
-                memberId={selectedId}
-                onClose={() => setSelectedId(null)}
-                onEdit={() => { setEditingId(selectedId); setSelectedId(null) }}
-              />
-            </div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* Delete confirm */}
-      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove team member?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {members.find((m) => m.id === deleteId)?.name ?? "This agent"} will be removed from the team. Their leads will remain in the system but become unassigned.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Remove
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
   )
 }

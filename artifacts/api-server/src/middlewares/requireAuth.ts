@@ -15,7 +15,6 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
   const token = authHeader.slice(7);
 
-  // ── Step 1: Validate token with Supabase ──────────────────
   let user: { id: string; email?: string; user_metadata?: Record<string, string> };
   try {
     const { data: { user: u }, error } = await supabaseAdmin.auth.getUser(token);
@@ -30,7 +29,6 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   (req as any).userId = user.id;
   (req as any).userEmail = user.email;
 
-  // ── Step 2: Upsert user in local DB ───────────────────────
   try {
     const meta = (user.user_metadata ?? {}) as Record<string, string>;
     const fullName: string = meta.full_name ?? meta.name ?? "";
@@ -40,13 +38,15 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     const isSuperAdmin = email === "murtazaarshad499@gmail.com";
 
     await db.execute(sql`
-      INSERT INTO users (id, email, first_name, last_name, role, onboarded, created_at, updated_at)
+      INSERT INTO users (id, email, first_name, last_name, role, org_role, onboarded, is_active, created_at, updated_at)
       VALUES (
         ${user.id},
         ${email},
         ${firstName || null},
         ${lastName},
         ${isSuperAdmin ? "super_admin" : "agent"},
+        ${isSuperAdmin ? "admin" : "agent"},
+        true,
         true,
         NOW(),
         NOW()
@@ -60,29 +60,54 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         updated_at = NOW()
     `);
 
-    // ── Step 3: Auto-create org on first login ────────────────
     const existingOwner = await db.execute(sql`SELECT id FROM organizations WHERE owner_id = ${user.id} LIMIT 1`);
     if (!existingOwner.rows.length) {
       const existingMember = await db.execute(sql`SELECT organization_id FROM users WHERE id = ${user.id} AND organization_id IS NOT NULL LIMIT 1`);
       if (!existingMember.rows.length) {
-        const orgName = isSuperAdmin
-          ? "LuxeState Admin"
-          : (firstName ? `${firstName}'s Workspace` : (email.split("@")[0] + "'s Workspace"));
 
-        // Read plan preference from sign-up metadata
-        const rawPlanSlug = meta.plan_slug as string | undefined;
-        const selectedPlan: PaidPlanSlug = (rawPlanSlug && (VALID_PLAN_SLUGS as readonly string[]).includes(rawPlanSlug))
-          ? rawPlanSlug as PaidPlanSlug
-          : "free";
+        const pendingInvite = await db.execute(sql`
+          SELECT organization_id, org_role FROM invitations
+          WHERE LOWER(email) = ${email.toLowerCase()}
+            AND accepted_at IS NULL
+            AND expires_at > NOW()
+          ORDER BY created_at DESC LIMIT 1
+        `);
 
-        const plan = isSuperAdmin ? "agency" : selectedPlan;
-        // free plan → active (permanently free); paid plans on sign-up → trial until payment confirmed
-        const status = isSuperAdmin ? "active" : (selectedPlan === "free" ? "active" : "trial");
+        if (pendingInvite.rows.length > 0) {
+          const inv = pendingInvite.rows[0] as any;
+          await db.execute(sql`
+            UPDATE users
+            SET organization_id = ${inv.organization_id},
+                org_role = ${inv.org_role},
+                updated_at = NOW()
+            WHERE id = ${user.id}
+          `);
+          await db.execute(sql`
+            UPDATE invitations
+            SET accepted_at = NOW(), accepted_by = ${user.id}
+            WHERE LOWER(email) = ${email.toLowerCase()}
+              AND accepted_at IS NULL
+              AND expires_at > NOW()
+          `);
+          logger.info({ userId: user.id, email, orgId: inv.organization_id }, "Invited user joined organization");
+        } else {
+          const orgName = isSuperAdmin
+            ? "LuxeState Admin"
+            : (firstName ? `${firstName}'s Workspace` : (email.split("@")[0] + "'s Workspace"));
 
-        await db.execute(sql`
-          INSERT INTO organizations (name, owner_id, plan, subscription_status, is_internal, created_at, updated_at)
-          VALUES (${orgName}, ${user.id}, ${plan}, ${status}, ${isSuperAdmin}, NOW(), NOW())
-        `).catch((err: any) => logger.error({ err }, "requireAuth: org auto-create failed"));
+          const rawPlanSlug = meta.plan_slug as string | undefined;
+          const selectedPlan: PaidPlanSlug = (rawPlanSlug && (VALID_PLAN_SLUGS as readonly string[]).includes(rawPlanSlug))
+            ? rawPlanSlug as PaidPlanSlug
+            : "free";
+
+          const plan = isSuperAdmin ? "agency" : selectedPlan;
+          const status = isSuperAdmin ? "active" : (selectedPlan === "free" ? "active" : "trial");
+
+          await db.execute(sql`
+            INSERT INTO organizations (name, owner_id, plan, subscription_status, is_internal, created_at, updated_at)
+            VALUES (${orgName}, ${user.id}, ${plan}, ${status}, ${isSuperAdmin}, NOW(), NOW())
+          `).catch((err: any) => logger.error({ err }, "requireAuth: org auto-create failed"));
+        }
       }
     }
   } catch (err) {

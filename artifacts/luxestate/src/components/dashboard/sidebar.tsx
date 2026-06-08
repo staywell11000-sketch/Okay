@@ -33,26 +33,34 @@ import { useSettings } from "@/lib/settings-api"
 import { useLocation as useWouterLocation } from "wouter"
 import { useLanguage, type TranslationKey } from "@/lib/i18n"
 import { usePlan, useSuperAdmin } from "@/lib/plan-context"
+import { usePermissions } from "@/lib/permissions-context"
 import { UpgradeModal } from "@/components/upgrade-modal"
-import { NAV_FEATURE_MAP, FEATURE_CONFIG } from "@/lib/plan-features"
+import { NAV_FEATURE_MAP } from "@/lib/plan-features"
 
-const navItems: { href: string; key: TranslationKey; icon: React.ElementType }[] = [
+type NavItem = {
+  href: string
+  key: TranslationKey
+  icon: React.ElementType
+  permissionResource?: string
+}
+
+const navItems: NavItem[] = [
   { href: "/dashboard",                 key: "nav.overview",        icon: LayoutDashboard },
-  { href: "/dashboard/leads",           key: "nav.leads",           icon: Users },
-  { href: "/dashboard/integrations",    key: "nav.leadSources",     icon: Cable },
-  { href: "/dashboard/properties",      key: "nav.properties",      icon: Building2 },
-  { href: "/dashboard/dealers",         key: "nav.dealers",         icon: Handshake },
-  { href: "/dashboard/messages",        key: "nav.messages",        icon: MessageSquare },
-  { href: "/dashboard/analytics",       key: "nav.analytics",       icon: BarChart3 },
-  { href: "/dashboard/ai-intelligence", key: "nav.aiIntelligence",  icon: Brain },
-  { href: "/dashboard/automations",     key: "nav.automations",     icon: Zap },
-  { href: "/dashboard/team",            key: "nav.team",            icon: Users2 },
-  { href: "/dashboard/deals",           key: "nav.deals",           icon: ClipboardList },
-  { href: "/dashboard/documents",       key: "nav.documents",       icon: FolderOpen },
+  { href: "/dashboard/leads",           key: "nav.leads",           icon: Users,          permissionResource: "leads" },
+  { href: "/dashboard/integrations",    key: "nav.leadSources",     icon: Cable,          permissionResource: "leads" },
+  { href: "/dashboard/properties",      key: "nav.properties",      icon: Building2,      permissionResource: "properties" },
+  { href: "/dashboard/dealers",         key: "nav.dealers",         icon: Handshake,      permissionResource: "dealers" },
+  { href: "/dashboard/messages",        key: "nav.messages",        icon: MessageSquare,  permissionResource: "messages" },
+  { href: "/dashboard/analytics",       key: "nav.analytics",       icon: BarChart3,      permissionResource: "analytics" },
+  { href: "/dashboard/ai-intelligence", key: "nav.aiIntelligence",  icon: Brain,          permissionResource: "ai_intelligence" },
+  { href: "/dashboard/automations",     key: "nav.automations",     icon: Zap,            permissionResource: "automations" },
+  { href: "/dashboard/team",            key: "nav.team",            icon: Users2,         permissionResource: "team" },
+  { href: "/dashboard/deals",           key: "nav.deals",           icon: ClipboardList,  permissionResource: "deals" },
+  { href: "/dashboard/documents",       key: "nav.documents",       icon: FolderOpen,     permissionResource: "documents" },
   { href: "/dashboard/calculator",      key: "nav.calculator",      icon: Calculator },
-  { href: "/dashboard/calendar",        key: "nav.calendar",        icon: CalendarDays },
+  { href: "/dashboard/calendar",        key: "nav.calendar",        icon: CalendarDays,   permissionResource: "calendar" },
   { href: "/dashboard/billing",         key: "nav.billing",         icon: CreditCard },
-  { href: "/dashboard/settings",        key: "nav.settings",        icon: Settings },
+  { href: "/dashboard/settings",        key: "nav.settings",        icon: Settings,       permissionResource: "settings" },
 ]
 
 type SidebarProps = {
@@ -68,6 +76,7 @@ export function Sidebar({ collapsed, setCollapsed, notifOpen, onToggleNotif, unr
   const { data: settingsData } = useSettings()
   const { t } = useLanguage()
   const { hasFeature, org, isSuperAdmin } = usePlan()
+  const { canView, isAdmin: isOrgAdmin, isLoading: permsLoading } = usePermissions()
   const businessName = settingsData?.settings?.business_name || "My CRM"
   const businessLogoUrl = settingsData?.settings?.business_logo_url
   const brandInitial = businessName.trim()[0]?.toUpperCase() ?? "C"
@@ -89,6 +98,12 @@ export function Sidebar({ collapsed, setCollapsed, notifOpen, onToggleNotif, unr
     return !hasFeature(featureKey)
   }
 
+  const isHiddenByPermission = (item: NavItem): boolean => {
+    if (isSuperAdmin || isOrgAdmin || permsLoading) return false
+    if (!item.permissionResource) return false
+    return !canView(item.permissionResource)
+  }
+
   const handleNavClick = (href: string, e: React.MouseEvent) => {
     if (isLocked(href)) {
       e.preventDefault()
@@ -97,6 +112,8 @@ export function Sidebar({ collapsed, setCollapsed, notifOpen, onToggleNotif, unr
     }
   }
 
+  const visibleItems = navItems.filter((item) => !isHiddenByPermission(item))
+
   return (
     <>
       <motion.aside
@@ -104,7 +121,7 @@ export function Sidebar({ collapsed, setCollapsed, notifOpen, onToggleNotif, unr
         transition={{ duration: 0.25, ease: "easeInOut" }}
         className="relative flex flex-col border-r border-sidebar-border bg-sidebar h-full overflow-hidden"
       >
-        {/* ── Brand header ───────────────────────────────── */}
+        {/* Brand header */}
         <div className="flex h-16 flex-shrink-0 items-center justify-between border-b border-sidebar-border px-4">
           <AnimatePresence>
             {!collapsed && (
@@ -159,15 +176,15 @@ export function Sidebar({ collapsed, setCollapsed, notifOpen, onToggleNotif, unr
           </Button>
         </div>
 
-        {/* ── Nav items ──────────────────────────────────── */}
+        {/* Nav items */}
         <nav className="flex-1 overflow-y-auto space-y-0.5 p-2 pt-3">
           <SidebarNavExtras collapsed={collapsed} />
-          {navItems.map((item) => {
+          {visibleItems.map((item) => {
             const active = isActive(item.href)
             const locked = isLocked(item.href)
 
             return (
-              <Link key={item.href} href={locked ? item.href : item.href} onClick={(e) => handleNavClick(item.href, e)}>
+              <Link key={item.href} href={item.href} onClick={(e) => handleNavClick(item.href, e)}>
                 <motion.div
                   whileHover={{ x: collapsed ? 0 : 2 }}
                   className={cn(
@@ -213,7 +230,7 @@ export function Sidebar({ collapsed, setCollapsed, notifOpen, onToggleNotif, unr
           })}
         </nav>
 
-        {/* ── User section ───────────────────────────────── */}
+        {/* User section */}
         <div className="flex-shrink-0 border-t border-sidebar-border p-2">
           <SidebarUserSection
             collapsed={collapsed}
@@ -340,11 +357,7 @@ function SidebarUserSection({
           <div className="flex min-w-0 flex-1 items-center gap-2 pl-1 rounded-xl py-1 px-1.5 cursor-pointer hover:bg-sidebar-accent transition-colors group">
             <div className="relative flex-shrink-0">
               {profile?.avatarUrl ? (
-                <img
-                  src={profile.avatarUrl}
-                  alt={displayName}
-                  className="h-7 w-7 rounded-full object-cover ring-1 ring-border/40"
-                />
+                <img src={profile.avatarUrl} alt={displayName} className="h-7 w-7 rounded-full object-cover ring-1 ring-border/40" />
               ) : (
                 <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/80 to-accent/80 text-xs font-semibold text-primary-foreground">
                   {initials}
@@ -364,11 +377,7 @@ function SidebarUserSection({
         <Link href="/dashboard/settings">
           <div className="flex items-center justify-center cursor-pointer">
             {profile?.avatarUrl ? (
-              <img
-                src={profile.avatarUrl}
-                alt={displayName}
-                className="h-8 w-8 rounded-full object-cover ring-1 ring-border/40 hover:ring-primary/50 transition-all"
-              />
+              <img src={profile.avatarUrl} alt={displayName} className="h-8 w-8 rounded-full object-cover ring-1 ring-border/40 hover:ring-primary/50 transition-all" />
             ) : (
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-primary/80 to-accent/80 text-xs font-semibold text-primary-foreground hover:ring-2 hover:ring-primary/40 transition-all">
                 {initials}

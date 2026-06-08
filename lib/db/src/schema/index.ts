@@ -22,3 +22,8 @@ export * from "./payment_requests";
 export * from "./audit_logs";
 export * from "./organization_addons";
 export * from "./ai_usage";
+export * from "./roles";
+export * from "./permissions";
+export * from "./role_permissions";
+export * from "./user_permissions";
+export * from "./invitations";

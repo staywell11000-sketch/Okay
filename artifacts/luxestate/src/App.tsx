@@ -9,6 +9,8 @@ import { AuthProvider, useAuth } from "@/lib/auth-context"
 import { useCurrentUser } from "@/lib/user-api"
 import { Loader2 } from "lucide-react"
 import { PlanProvider } from "@/lib/plan-context"
+import { PermissionsProvider, usePermissions } from "@/lib/permissions-context"
+import { AccessDenied } from "@/components/dashboard/access-denied"
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null }
@@ -32,11 +34,13 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
     return this.props.children
   }
 }
+
 import NotFound from "@/pages/not-found"
 import MarketingPage from "@/pages/marketing"
 import SignInPage from "@/pages/auth/sign-in"
 import SignUpPage from "@/pages/auth/sign-up"
 import ForgotPasswordPage from "@/pages/auth/forgot-password"
+import AcceptInvitePage from "@/pages/auth/accept-invite"
 import { DashboardLayout } from "@/pages/dashboard/layout"
 import OverviewPage from "@/pages/dashboard/overview"
 import LeadsPage from "@/pages/dashboard/leads"
@@ -63,9 +67,7 @@ import AdminAiUsage from "@/pages/admin/ai-usage"
 import AdminAuditLogs from "@/pages/admin/audit-logs"
 import { LanguageProvider } from "@/lib/i18n"
 
-
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "")
-
 
 function LoadingScreen() {
   return (
@@ -101,28 +103,67 @@ function HomeRedirect() {
   return <MarketingPage />
 }
 
+function PermissionGuard({
+  resource,
+  children,
+}: {
+  resource: string
+  children: React.ReactNode
+}) {
+  const { canView, isAdmin, isLoading } = usePermissions()
+  if (isLoading) return <LoadingScreen />
+  if (isAdmin || canView(resource)) return <>{children}</>
+  return <AccessDenied resource={resource} />
+}
+
 function DashboardRoutes() {
   return (
     <ProtectedRoute>
       <DashboardLayout>
         <Switch>
           <Route path="/dashboard" component={OverviewPage} />
-          <Route path="/dashboard/leads" component={LeadsPage} />
-          <Route path="/dashboard/properties" component={PropertiesPage} />
-          <Route path="/dashboard/messages" component={MessagesPage} />
-          <Route path="/dashboard/analytics" component={AnalyticsPage} />
-          <Route path="/dashboard/ai-intelligence" component={AIIntelligencePage} />
-          <Route path="/dashboard/automations" component={AutomationsPage} />
-          <Route path="/dashboard/team" component={TeamPage} />
-          <Route path="/dashboard/deals" component={DealsPage} />
-          <Route path="/dashboard/documents" component={DocumentsPage} />
-          <Route path="/dashboard/calendar" component={CalendarPage} />
+          <Route path="/dashboard/leads">
+            <PermissionGuard resource="leads"><LeadsPage /></PermissionGuard>
+          </Route>
+          <Route path="/dashboard/properties">
+            <PermissionGuard resource="properties"><PropertiesPage /></PermissionGuard>
+          </Route>
+          <Route path="/dashboard/messages">
+            <PermissionGuard resource="messages"><MessagesPage /></PermissionGuard>
+          </Route>
+          <Route path="/dashboard/analytics">
+            <PermissionGuard resource="analytics"><AnalyticsPage /></PermissionGuard>
+          </Route>
+          <Route path="/dashboard/ai-intelligence">
+            <PermissionGuard resource="ai_intelligence"><AIIntelligencePage /></PermissionGuard>
+          </Route>
+          <Route path="/dashboard/automations">
+            <PermissionGuard resource="automations"><AutomationsPage /></PermissionGuard>
+          </Route>
+          <Route path="/dashboard/team">
+            <PermissionGuard resource="team"><TeamPage /></PermissionGuard>
+          </Route>
+          <Route path="/dashboard/deals">
+            <PermissionGuard resource="deals"><DealsPage /></PermissionGuard>
+          </Route>
+          <Route path="/dashboard/documents">
+            <PermissionGuard resource="documents"><DocumentsPage /></PermissionGuard>
+          </Route>
+          <Route path="/dashboard/calendar">
+            <PermissionGuard resource="calendar"><CalendarPage /></PermissionGuard>
+          </Route>
+          <Route path="/dashboard/settings">
+            <PermissionGuard resource="settings"><SettingsPage /></PermissionGuard>
+          </Route>
+          <Route path="/dashboard/integrations">
+            <PermissionGuard resource="leads"><IntegrationsPage /></PermissionGuard>
+          </Route>
+          <Route path="/dashboard/dealers">
+            <PermissionGuard resource="dealers"><DealersPage /></PermissionGuard>
+          </Route>
           <Route path="/dashboard/calculator" component={CalculatorPage} />
-          <Route path="/dashboard/ai-usage"><Redirect to="/dashboard/ai-intelligence" /></Route>
-          <Route path="/dashboard/settings" component={SettingsPage} />
-          <Route path="/dashboard/integrations" component={IntegrationsPage} />
-          <Route path="/dashboard/dealers" component={DealersPage} />
           <Route path="/dashboard/billing" component={BillingPage} />
+          <Route path="/dashboard/ai-usage"><Redirect to="/dashboard/ai-intelligence" /></Route>
           <Route component={NotFound} />
         </Switch>
       </DashboardLayout>
@@ -134,7 +175,9 @@ function LeadProfileRoute({ params }: { params: { id: string } }) {
   return (
     <ProtectedRoute>
       <DashboardLayout>
-        <LeadProfilePage params={params} />
+        <PermissionGuard resource="leads">
+          <LeadProfilePage params={params} />
+        </PermissionGuard>
       </DashboardLayout>
     </ProtectedRoute>
   )
@@ -167,6 +210,7 @@ function Router() {
       <Route path="/sign-up">
         <PublicOnlyRoute><SignUpPage /></PublicOnlyRoute>
       </Route>
+      <Route path="/accept-invite" component={AcceptInvitePage} />
       <Route path="/forgot-password" component={ForgotPasswordPage} />
       <Route path="/onboarding">
         <ProtectedRoute><Redirect to="/dashboard" /></ProtectedRoute>
@@ -196,10 +240,12 @@ function App() {
               <LanguageProvider>
                 <AuthProvider>
                   <PlanProvider>
-                    <ErrorBoundary>
-                      <Router />
-                    </ErrorBoundary>
-                    <Toaster />
+                    <PermissionsProvider>
+                      <ErrorBoundary>
+                        <Router />
+                      </ErrorBoundary>
+                      <Toaster />
+                    </PermissionsProvider>
                   </PlanProvider>
                 </AuthProvider>
               </LanguageProvider>
