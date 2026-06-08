@@ -7,7 +7,7 @@ import {
 } from "recharts"
 import {
   Users, DollarSign, CalendarDays, TrendingUp,
-  RefreshCw, Plus, ArrowRight, Building2,
+  RefreshCw, ArrowRight, Building2,
   UserCheck, ClipboardList, CheckCircle2, Circle,
   AlertCircle, Loader2, UserPlus, WifiOff,
 } from "lucide-react"
@@ -15,7 +15,6 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { DashboardPageHeader } from "@/components/dashboard/page-header"
-import { AddLeadModal } from "@/components/dashboard/add-lead-modal"
 import { useAnalytics, useRefreshAnalytics } from "@/lib/analytics-api"
 import { useAuth } from "@/lib/auth-context"
 
@@ -146,7 +145,6 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function OverviewPage() {
-  const [showAddLead, setShowAddLead] = useState(false)
   const { data, isPending, isFetching, isError, error, refetch } = useAnalytics()
   const refresh = useRefreshAnalytics()
   const [refreshing, setRefreshing] = useState(false)
@@ -201,14 +199,6 @@ export default function OverviewPage() {
             >
               <RefreshCw className={cn("h-4 w-4", (refreshing || isFetching) && "animate-spin")} />
               {isFetching && !refreshing ? "Updating…" : "Refresh"}
-            </Button>
-            <Button
-              onClick={() => setShowAddLead(true)}
-              className="gap-2 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25"
-              size="sm"
-            >
-              <Plus className="h-4 w-4" />
-              Add Lead
             </Button>
           </div>
         }
@@ -719,7 +709,6 @@ export default function OverviewPage() {
         </motion.div>
       )}
 
-      <AddLeadModal open={showAddLead} onClose={() => setShowAddLead(false)} />
     </div>
   )
 }
