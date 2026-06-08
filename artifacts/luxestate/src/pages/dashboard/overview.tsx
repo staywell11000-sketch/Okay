@@ -6,10 +6,10 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts"
 import {
-  Users, DollarSign, Home, CalendarDays, TrendingUp,
-  TrendingDown, RefreshCw, Plus, ArrowRight, Building2,
-  UserCheck, ClipboardList, Clock, CheckCircle2, Circle,
-  Flame, AlertCircle, Loader2, UserPlus,
+  Users, DollarSign, CalendarDays, TrendingUp,
+  RefreshCw, Plus, ArrowRight, Building2,
+  UserCheck, ClipboardList, CheckCircle2, Circle,
+  AlertCircle, Loader2, UserPlus, WifiOff,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -147,10 +147,17 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
 
 export default function OverviewPage() {
   const [showAddLead, setShowAddLead] = useState(false)
-  const { data, isLoading, isError } = useAnalytics()
+  const { data, isPending, isFetching, isError, error, refetch } = useAnalytics()
   const refresh = useRefreshAnalytics()
   const [refreshing, setRefreshing] = useState(false)
   const { user } = useAuth()
+
+  // true only when we have NO data yet (first-ever load)
+  const isFirstLoad = isPending && isFetching
+  // true when we had data but a background re-fetch has now failed
+  const isRefetchError = isError && !!data
+  // true when first load completely failed — no data at all
+  const isHardError = isError && !data
 
   const firstName = (user as any)?.user_metadata?.name?.split(" ")[0]
     ?? (user as any)?.email?.split("@")[0]
@@ -163,7 +170,7 @@ export default function OverviewPage() {
   const handleRefresh = () => {
     setRefreshing(true)
     refresh()
-    setTimeout(() => setRefreshing(false), 800)
+    setTimeout(() => setRefreshing(false), 1200)
   }
 
   // Sort deal stages by canonical pipeline order
@@ -189,11 +196,11 @@ export default function OverviewPage() {
               variant="outline"
               size="sm"
               onClick={handleRefresh}
-              disabled={refreshing || isLoading}
+              disabled={refreshing || isFirstLoad || isFetching}
               className="gap-2"
             >
-              <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
-              Refresh
+              <RefreshCw className={cn("h-4 w-4", (refreshing || isFetching) && "animate-spin")} />
+              {isFetching && !refreshing ? "Updating…" : "Refresh"}
             </Button>
             <Button
               onClick={() => setShowAddLead(true)}
@@ -207,17 +214,54 @@ export default function OverviewPage() {
         }
       />
 
-      {isError && (
-        <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-500 flex items-center gap-2">
+      {/* Hard error: first load failed entirely — show a clear full-width state */}
+      {isHardError && (
+        <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-8 flex flex-col items-center gap-4 text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10">
+            <WifiOff className="h-7 w-7 text-destructive" />
+          </div>
+          <div>
+            <p className="font-semibold text-foreground">Dashboard data couldn't be loaded</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {(error as Error)?.message?.includes("HTTP")
+                ? "The server returned an error. It may be starting up — please try again."
+                : "A network or server issue prevented loading. Check your connection."}
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => { setRefreshing(true); refetch().finally(() => setRefreshing(false)) }}
+            disabled={isFetching}
+          >
+            {isFetching
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <RefreshCw className="h-4 w-4" />}
+            {isFetching ? "Retrying…" : "Try again"}
+          </Button>
+        </div>
+      )}
+
+      {/* Soft error: had data, background re-fetch failed — keep showing data */}
+      {isRefetchError && (
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/8 px-4 py-2.5 text-sm text-amber-700 flex items-center gap-2">
           <AlertCircle className="h-4 w-4 shrink-0" />
-          Failed to load dashboard data.
-          <button onClick={handleRefresh} className="ml-auto underline font-medium">Retry</button>
+          <span>Data may be outdated — last refresh failed.</span>
+          <button
+            onClick={handleRefresh}
+            disabled={isFetching}
+            className="ml-auto flex items-center gap-1 font-medium underline-offset-2 hover:underline disabled:opacity-50"
+          >
+            {isFetching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            Retry
+          </button>
         </div>
       )}
 
       {/* ── Metric Cards ──────────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        {isLoading ? (
+        {isFirstLoad ? (
           Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-[100px]" />
           ))
@@ -300,7 +344,7 @@ export default function OverviewPage() {
             <h3 className="text-base font-semibold text-foreground">Weekly Activity</h3>
             <p className="text-sm text-muted-foreground">Leads &amp; deals created over the last 7 days</p>
           </div>
-          {isLoading ? (
+          {isFirstLoad ? (
             <Skeleton className="h-56" />
           ) : (
             <div className="h-56">
@@ -340,7 +384,7 @@ export default function OverviewPage() {
             <h3 className="text-base font-semibold text-foreground">Lead Sources</h3>
             <p className="text-sm text-muted-foreground">Distribution by channel</p>
           </div>
-          {isLoading ? (
+          {isFirstLoad ? (
             <Skeleton className="h-56" />
           ) : !data?.sourceBreakdown?.length ? (
             <Empty label="No source data yet" />
@@ -406,7 +450,7 @@ export default function OverviewPage() {
             <ArrowRight className="h-3.5 w-3.5" />
           </Button>
         </div>
-        {isLoading ? (
+        {isFirstLoad ? (
           <Skeleton className="h-44" />
         ) : !sortedStages.length ? (
           <Empty label="No deals in pipeline" />
@@ -441,7 +485,7 @@ export default function OverviewPage() {
           </div>
         )}
         {/* Stage pills */}
-        {!isLoading && sortedStages.length > 0 && (
+        {!isFirstLoad && sortedStages.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-2">
             {sortedStages.map((s) => (
               <div
@@ -477,7 +521,7 @@ export default function OverviewPage() {
             icon={UserPlus}
             href="/dashboard/leads"
           />
-          {isLoading ? (
+          {isFirstLoad ? (
             <FeedSkeleton />
           ) : !data?.recentLeads?.length ? (
             <Empty label="No leads yet" />
@@ -524,7 +568,7 @@ export default function OverviewPage() {
             icon={CalendarDays}
             href="/dashboard/calendar"
           />
-          {isLoading ? (
+          {isFirstLoad ? (
             <FeedSkeleton />
           ) : !data?.upcomingAppointmentsList?.length ? (
             <Empty label="No upcoming appointments" />
@@ -581,7 +625,7 @@ export default function OverviewPage() {
             icon={DollarSign}
             href="/dashboard/deals"
           />
-          {isLoading ? (
+          {isFirstLoad ? (
             <FeedSkeleton />
           ) : !data?.recentDeals?.length ? (
             <Empty label="No deals yet" />

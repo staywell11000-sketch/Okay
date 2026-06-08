@@ -1,8 +1,10 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useAuth } from "./auth-context";
 import { useCallback } from "react";
+import { supabase } from "./supabase";
 
-const API = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+const API = `${BASE}/api`;
 
 export type AnalyticsKPIs = {
   totalLeads: number;
@@ -52,22 +54,50 @@ export type AnalyticsData = {
   upcomingAppointmentsList: UpcomingAppointment[];
 };
 
+// Always fetch a fresh token from Supabase rather than using a stale value
+// captured in a React state closure. This prevents 401s after token refresh.
+async function fetchWithFreshToken(url: string): Promise<Response> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (session?.access_token) {
+    headers["Authorization"] = `Bearer ${session.access_token}`;
+  }
+  return fetch(url, { headers });
+}
+
 export function useAnalytics() {
   const { session } = useAuth();
-  const headers = {
-    "Content-Type": "application/json",
-    ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-  };
 
   return useQuery<AnalyticsData>({
     queryKey: ["analytics"],
     queryFn: async () => {
-      const res = await fetch(`${API}/analytics/overview`, { headers });
-      if (!res.ok) throw new Error("Failed to fetch analytics");
+      let res = await fetchWithFreshToken(`${API}/analytics/overview`);
+
+      // If we get a 401, the token may have just expired. Force a refresh and
+      // retry once before surfacing an error.
+      if (res.status === 401) {
+        await supabase.auth.refreshSession();
+        res = await fetchWithFreshToken(`${API}/analytics/overview`);
+      }
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(
+          body?.error ?? `Analytics request failed (HTTP ${res.status})`
+        );
+      }
+
       return res.json();
     },
-    staleTime: 1000 * 60 * 2,
     enabled: !!session,
+    staleTime: 1000 * 60 * 2,       // 2 min — stay fresh without hammering server
+    gcTime: 1000 * 60 * 10,          // Keep cache for 10 min after unmount
+    retry: 2,                         // Retry twice before surfacing error
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
+    // Keep old data visible during background re-fetch so charts don't flash
+    placeholderData: keepPreviousData,
   });
 }
 
