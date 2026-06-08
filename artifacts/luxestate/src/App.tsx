@@ -67,6 +67,8 @@ import AdminPayments from "@/pages/admin/payments"
 import AdminAiUsage from "@/pages/admin/ai-usage"
 import AdminAuditLogs from "@/pages/admin/audit-logs"
 import AdminSupport from "@/pages/admin/support"
+import AdminAiSettings from "@/pages/admin/ai-settings"
+import AIUsagePage from "@/pages/dashboard/ai-usage"
 import { LanguageProvider } from "@/lib/i18n"
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "")
@@ -183,7 +185,7 @@ function DashboardRoutes() {
           </Route>
           <Route path="/dashboard/calculator" component={CalculatorPage} />
           <Route path="/dashboard/billing" component={BillingPage} />
-          <Route path="/dashboard/ai-usage"><Redirect to="/dashboard/ai-intelligence" /></Route>
+          <Route path="/dashboard/ai-usage" component={AIUsagePage} />
           <Route component={NotFound} />
         </Switch>
       </DashboardLayout>
@@ -212,6 +214,7 @@ function AdminRoutes() {
           <Route path="/admin/organizations" component={AdminOrganizations} />
           <Route path="/admin/payments" component={AdminPayments} />
           <Route path="/admin/ai-usage" component={AdminAiUsage} />
+          <Route path="/admin/ai-settings" component={AdminAiSettings} />
           <Route path="/admin/audit-logs" component={AdminAuditLogs} />
           <Route path="/admin/support" component={AdminSupport} />
           <Route component={NotFound} />

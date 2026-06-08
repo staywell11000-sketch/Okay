@@ -5,6 +5,7 @@ import { requireAuth } from "../middlewares/requireAuth";
 import { requireAiCredits, consumeAiActions, AI_ACTION_COSTS, PLAN_AI_ACTIONS, getOrCreateUsageRow } from "../middlewares/requireAiCredits";
 import { openai } from "../lib/openai";
 import { fireTrigger } from "../services/automationEngine";
+import { getModelForFeature, getModelConfig, updateModelConfig, CLASS_INFO, AVAILABLE_MODELS, FEATURE_CLASS_MAP } from "../lib/aiRouter";
 
 const router: IRouter = Router();
 
@@ -58,8 +59,10 @@ async function analyzeLeadWithAI(leadData: {
   recentMessages: string[];
   recentActivities: string[];
   dealInfo: string | null;
+  model?: string;
 }): Promise<{ analysis: LeadAnalysis; usage: any }> {
-  const { lead, recentMessages, recentActivities, dealInfo } = leadData;
+  const { lead, recentMessages, recentActivities, dealInfo, model: requestedModel } = leadData;
+  const model = requestedModel ?? await getModelForFeature("analyze-lead");
 
   const prompt = `You are an AI assistant for a luxury real estate CRM. Analyze this lead and return a JSON object.
 
@@ -101,7 +104,7 @@ Return ONLY a valid JSON object with these exact fields:
 }`;
 
   const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
+    model,
     max_tokens: 800,
     messages: [{ role: "user", content: prompt }],
     response_format: { type: "json_object" },
@@ -344,8 +347,9 @@ Return ONLY a valid JSON object:
   "avgDealDays": <number>
 }`;
 
+    const model = await getModelForFeature("sales-insights");
     const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model,
       max_tokens: 600,
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" },
@@ -424,8 +428,9 @@ Return ONLY valid JSON:
   "nextBestAction": <string>
 }`;
 
+    const model = await getModelForFeature("conversation-summary");
     const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model,
       max_tokens: 600,
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" },
@@ -494,8 +499,9 @@ Current CRM snapshot:
 
 Be concise and actionable. Answer in 2-4 sentences unless a detailed breakdown is requested.`;
 
+    const chatModel = await getModelForFeature("chat");
     const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: chatModel,
       max_tokens: 500,
       messages: [
         { role: "system", content: systemPrompt },
@@ -711,8 +717,9 @@ router.post("/reply-suggestions", requireAuth, requireAiCredits, async (req, res
       return `${role}: ${m.content}`;
     }).join("\n");
 
+    const replyModel = await getModelForFeature("reply-suggestions");
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: replyModel,
       response_format: { type: "json_object" },
       messages: [
         {
@@ -766,8 +773,9 @@ router.post("/deal-insights", requireAuth, requireAiCredits, async (req, res) =>
       `Deal: "${d.title || "Untitled"}" | Stage: ${d.stage || "unknown"} | Value: ${d.value || 0} | Created: ${d.createdAt ? new Date(d.createdAt).toLocaleDateString() : "unknown"}`
     ).join("\n");
 
+    const dealModel = await getModelForFeature("deal-insights");
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: dealModel,
       response_format: { type: "json_object" },
       messages: [
         {
@@ -820,8 +828,9 @@ Total Deals: ${dealsData.length} | Closed Won: ${closedDeals.length} | Won Value
 Recent Activities: ${recentActivities.length}
 Lead Sources: ${Array.from(new Set(leadsData.map((l: any) => l.source).filter(Boolean))).join(", ") || "unknown"}`;
 
+    const bizModel = await getModelForFeature("business-insights");
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: bizModel,
       response_format: { type: "json_object" },
       messages: [
         {
@@ -874,8 +883,9 @@ Uncontacted leads: ${uncontacted.length} — ${uncontacted.slice(0, 5).join(", "
 Cold leads (7+ days no contact): ${coldLeads.length} — ${coldLeads.slice(0, 5).join(", ")}
 Stalled deals (7+ days no update): ${stalledDeals.length} — ${stalledDeals.slice(0, 5).join(", ")}`;
 
+    const riskModel = await getModelForFeature("risk-detection");
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: riskModel,
       response_format: { type: "json_object" },
       messages: [
         {
@@ -926,8 +936,9 @@ router.post("/property-matching/:leadId", requireAuth, requireAiCredits, async (
       `${i + 1}. ID:${p.id} | ${p.title || "Untitled"} | Type: ${p.type || "unknown"} | Price: ${p.price || 0} | Area: ${p.area || "unknown"} | Size: ${p.size || "unknown"}`
     ).join("\n");
 
+    const matchModel = await getModelForFeature("property-matching");
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: matchModel,
       response_format: { type: "json_object" },
       messages: [
         {
@@ -949,6 +960,65 @@ Rank by match score descending. Return top 5 matches max.`,
   } catch (err) {
     console.error("Property matching error:", err);
     return res.status(500).json({ error: "Failed to run property matching" });
+  }
+});
+
+// ── Admin: GET model config ───────────────────────────────────────────────
+router.get("/admin/ai-model-config", requireAuth, async (req, res) => {
+  const userEmail = (req as any).userEmail;
+  const userId = (req as any).userId;
+  if (userEmail !== "murtazaarshad499@gmail.com") {
+    const row = await db.execute(sql`SELECT role FROM users WHERE id = ${userId}`);
+    if ((row.rows[0] as any)?.role !== "super_admin") return void res.status(403).json({ error: "Forbidden" });
+  }
+  try {
+    const config = await getModelConfig();
+    return res.json({ ...config, availableModels: AVAILABLE_MODELS, classInfo: CLASS_INFO });
+  } catch {
+    return res.status(500).json({ error: "Failed to fetch model config" });
+  }
+});
+
+// ── Admin: PUT model config ───────────────────────────────────────────────
+router.put("/admin/ai-model-config", requireAuth, async (req, res) => {
+  const userEmail = (req as any).userEmail;
+  const userId = (req as any).userId;
+  if (userEmail !== "murtazaarshad499@gmail.com") {
+    const row = await db.execute(sql`SELECT role FROM users WHERE id = ${userId}`);
+    if ((row.rows[0] as any)?.role !== "super_admin") return void res.status(403).json({ error: "Forbidden" });
+  }
+  try {
+    const { A, B, C } = req.body as { A?: string; B?: string; C?: string };
+    await updateModelConfig({ A, B, C });
+    const updated = await getModelConfig();
+    return res.json({ success: true, config: updated });
+  } catch {
+    return res.status(500).json({ error: "Failed to update model config" });
+  }
+});
+
+// ── Admin: GET observability stats ───────────────────────────────────────
+router.get("/admin/ai-observability", requireAuth, async (req, res) => {
+  const userEmail = (req as any).userEmail;
+  const userId = (req as any).userId;
+  if (userEmail !== "murtazaarshad499@gmail.com") {
+    const row = await db.execute(sql`SELECT role FROM users WHERE id = ${userId}`);
+    if ((row.rows[0] as any)?.role !== "super_admin") return void res.status(403).json({ error: "Forbidden" });
+  }
+  try {
+    const stats = await db.execute(sql`
+      SELECT feature_class,
+             COUNT(*) as calls,
+             ROUND(AVG(response_time_ms)) as avg_response_ms,
+             SUM(CASE WHEN was_fallback THEN 1 ELSE 0 END) as fallback_count
+      FROM ai_observability_log
+      WHERE created_at >= NOW() - INTERVAL '30 days'
+      GROUP BY feature_class
+      ORDER BY feature_class
+    `).catch(() => ({ rows: [] }));
+    return res.json({ stats: stats.rows });
+  } catch {
+    return res.json({ stats: [] });
   }
 });
 

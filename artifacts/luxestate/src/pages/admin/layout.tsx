@@ -2,7 +2,7 @@ import { ReactNode } from "react"
 import { Link, useLocation } from "wouter"
 import { useSuperAdmin } from "@/lib/plan-context"
 import { Redirect } from "wouter"
-import { LayoutDashboard, Building2, CreditCard, FileText, Zap, Settings, ChevronRight, HeadphonesIcon } from "lucide-react"
+import { LayoutDashboard, Building2, CreditCard, FileText, Zap, Brain, ChevronRight, HeadphonesIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const NAV = [
@@ -10,6 +10,7 @@ const NAV = [
   { href: "/admin/organizations", label: "Organizations", icon: Building2 },
   { href: "/admin/payments", label: "Payments", icon: CreditCard },
   { href: "/admin/ai-usage", label: "AI Usage", icon: Zap },
+  { href: "/admin/ai-settings", label: "AI Settings", icon: Brain },
   { href: "/admin/audit-logs", label: "Audit Logs", icon: FileText },
   { href: "/admin/support", label: "Support", icon: HeadphonesIcon },
 ]
@@ -22,7 +23,6 @@ export function AdminLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Sidebar */}
       <aside className="w-56 shrink-0 border-r bg-card flex flex-col">
         <div className="h-14 flex items-center px-4 border-b gap-2">
           <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center">
@@ -51,8 +51,6 @@ export function AdminLayout({ children }: { children: ReactNode }) {
           </Link>
         </div>
       </aside>
-
-      {/* Main */}
       <main className="flex-1 overflow-auto">{children}</main>
     </div>
   )

@@ -180,7 +180,7 @@ export const FEATURE_CONFIG: Record<string, FeatureConfig> = {
       "Full CRM context — leads, deals, pipeline",
       "Ask in plain language about any lead",
       "Closing strategies and follow-up advice",
-      "Powered by GPT-4o Mini",
+      "Powered by AI Assistant",
     ],
   },
   automations: {
