@@ -22,3 +22,4 @@
 - [Onboarding extended schema](onboarding-extended-schema.md) — how_heard/wants_tour/onboarding_completed_at added via ensureOnboardingSchema() in onboarding.ts; wizard is 7 steps; tour suppression: set lxs-tour-done-${userId} in localStorage if wantsTour===false.
 - [Plan feature tiers](plan-feature-tiers.md) — WhatsApp (messages) and lead_sources = professional; documents/analytics/calculator = starter; team/deals/ai = professional/agency; plan descriptions in sign-up.tsx match spec.
 - [CRM tour guide](crm-tour.md) — localStorage keyed lxs-tour-done-${userId}; spotlight via 4-panel overlay; data-tour attrs on sidebar inner divs; injected via DashboardLayout + onExpand cb; auto-skips permission-hidden steps.
+- [WhatsApp EBS architecture](whatsapp-ebs.md) — EBS code exchange needs no redirect_uri; FB SDK loaded dynamically; FACEBOOK_WHATSAPP_CONFIG_ID optional; templates stored in connected_accounts metadata; status endpoint returns them flattened.

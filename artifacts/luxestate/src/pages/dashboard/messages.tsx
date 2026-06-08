@@ -22,9 +22,12 @@ import {
   MessageCircle, Search, Plus, Send, Phone, Mail,
   CheckCheck, Check, Clock, MoreVertical, X,
   Loader2, MessageSquare, Archive, RefreshCw, StickyNote,
-  Sparkles, Copy, ChevronDown, ChevronUp,
+  Sparkles, Copy, ChevronDown, ChevronUp, ExternalLink,
 } from "lucide-react"
+import { FaWhatsapp } from "react-icons/fa"
 import { toast } from "sonner"
+import { useWhatsAppStatus } from "@/lib/whatsapp-api"
+import { useLocation } from "wouter"
 
 // ─── Avatar ───────────────────────────────────────────────
 
@@ -341,10 +344,32 @@ function EmptyThread() {
 
 // ─── Main Page ────────────────────────────────────────────
 
+// ─── WhatsApp Connect Banner ──────────────────────────────
+
+function WhatsAppBanner() {
+  const [, setLocation] = useLocation()
+  return (
+    <div className="mx-2 mt-2 mb-1 flex items-center gap-2.5 rounded-xl border border-[#25D366]/30 bg-[#25D366]/5 px-3 py-2.5">
+      <FaWhatsapp className="h-4 w-4 text-[#25D366] shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-medium text-foreground leading-snug">Connect WhatsApp</p>
+        <p className="text-[10px] text-muted-foreground truncate">Enable WhatsApp messaging with your leads</p>
+      </div>
+      <button
+        onClick={() => setLocation("/dashboard/settings?tab=whatsapp")}
+        className="flex shrink-0 items-center gap-1 rounded-lg bg-[#25D366] px-2 py-1 text-[10px] font-semibold text-white hover:bg-[#20bd5c] transition-colors"
+      >
+        Connect <ExternalLink className="h-2.5 w-2.5" />
+      </button>
+    </div>
+  )
+}
+
 export default function MessagesPage() {
   const { session, user } = useAuth()
   const { hasFeature, isSuperAdmin } = usePlan()
   const canUseAiSuggestions = isSuperAdmin || hasFeature("ai_reply_suggestions")
+  const { data: waStatus } = useWhatsAppStatus()
 
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loadingConvs, setLoadingConvs] = useState(true)
@@ -476,6 +501,9 @@ export default function MessagesPage() {
       <div className="flex flex-1 overflow-hidden border-t border-border">
         {/* ── Left: Conversation List ─────────────────── */}
         <div className="flex w-72 flex-shrink-0 flex-col border-r border-border bg-card/40">
+          {/* WhatsApp connect banner */}
+          {waStatus && !waStatus.connected && <WhatsAppBanner />}
+
           {/* Search */}
           <div className="p-3 border-b border-border/60">
             <div className="relative">

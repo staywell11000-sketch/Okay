@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { useTheme } from "next-themes"
 import { DashboardPageHeader } from "@/components/dashboard/page-header"
 import { ConnectedAccountsTab } from "@/components/dashboard/connected-accounts-tab"
+import { WhatsAppSettingsTab } from "@/components/whatsapp/WhatsAppSettingsTab"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -39,6 +40,7 @@ const TABS = [
   { id: "notifications",label: "Notifications",      icon: Bell },
   { id: "security",     label: "Security",           icon: Shield },
   { id: "accounts",     label: "Connected Accounts", icon: Link2 },
+  { id: "whatsapp",     label: "WhatsApp",           icon: MessageCircle },
   { id: "account",      label: "Account",            icon: UserCog },
   { id: "privacy",      label: "Privacy & Security", icon: ShieldAlert },
   { id: "support",      label: "Support",            icon: HeadphonesIcon },
@@ -235,11 +237,15 @@ export default function SettingsPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const tab = params.get("tab"); const connected = params.get("connected"); const error = params.get("error")
-    if (tab === "accounts" || connected || error) {
+    const validTabs = TABS.map(t => t.id)
+    if (tab && validTabs.includes(tab)) {
+      setActiveTab(tab)
+      window.history.replaceState({}, "", window.location.pathname)
+    } else if (connected || error) {
       setActiveTab("accounts")
-      if (connected) { setConnectedProvider(connected); window.history.replaceState({}, "", window.location.pathname) }
-      else if (error) { setOauthError(decodeURIComponent(params.get("provider") ? `${params.get("provider")}: ${error}` : error)); window.history.replaceState({}, "", window.location.pathname) }
     }
+    if (connected) { setConnectedProvider(connected); window.history.replaceState({}, "", window.location.pathname) }
+    else if (error) { setOauthError(decodeURIComponent(params.get("provider") ? `${params.get("provider")}: ${error}` : error)); window.history.replaceState({}, "", window.location.pathname) }
   }, [])
 
   // ── Profile form state ────────────────────────────────
@@ -1431,6 +1437,9 @@ export default function SettingsPage() {
                 </div>
               </div>
             )}
+
+            {/* ─── WhatsApp ─────────────────────────────── */}
+            {activeTab === "whatsapp" && <WhatsAppSettingsTab />}
 
             {/* ─── Privacy & Security ───────────────────── */}
             {activeTab === "privacy" && <PrivacyTab />}
