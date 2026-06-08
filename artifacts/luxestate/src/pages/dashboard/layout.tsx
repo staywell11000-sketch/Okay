@@ -302,8 +302,16 @@ function GlobalHeader({
 type DashboardLayoutProps = { children: ReactNode }
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
-  const [collapsed, setCollapsed]   = useState(false)
-  const [notifOpen, setNotifOpen]   = useState(false)
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem("sidebar-collapsed") === "true" } catch { return false }
+  })
+
+  const handleSetCollapsed = (v: boolean) => {
+    setCollapsed(v)
+    try { localStorage.setItem("sidebar-collapsed", String(v)) } catch {}
+  }
+
+  const [notifOpen, setNotifOpen] = useState(false)
   const nowRef = useRef(new Date())
 
   const { data: apiNotifs = [] }    = useNotifications()
@@ -325,7 +333,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       <PWAInstallButton variant="banner" />
       <Sidebar
         collapsed={collapsed}
-        setCollapsed={setCollapsed}
+        setCollapsed={handleSetCollapsed}
         notifOpen={notifOpen}
         onToggleNotif={() => setNotifOpen((v) => !v)}
         unreadCount={unreadCount}
