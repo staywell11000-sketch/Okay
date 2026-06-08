@@ -61,7 +61,18 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     `);
 
     const existingOwner = await db.execute(sql`SELECT id FROM organizations WHERE owner_id = ${user.id} LIMIT 1`);
-    if (!existingOwner.rows.length) {
+    if (existingOwner.rows.length > 0) {
+      // Owner exists — ensure their organization_id and org_role are set correctly
+      const ownedOrgId = (existingOwner.rows[0] as any).id;
+      await db.execute(sql`
+        UPDATE users
+        SET organization_id = ${ownedOrgId},
+            org_role = 'admin',
+            updated_at = NOW()
+        WHERE id = ${user.id}
+          AND (organization_id IS DISTINCT FROM ${ownedOrgId} OR org_role IS DISTINCT FROM 'admin')
+      `);
+    } else {
       const existingMember = await db.execute(sql`SELECT organization_id FROM users WHERE id = ${user.id} AND organization_id IS NOT NULL LIMIT 1`);
       if (!existingMember.rows.length) {
 
@@ -91,9 +102,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
           `);
           logger.info({ userId: user.id, email, orgId: inv.organization_id }, "Invited user joined organization");
         } else {
+          const rawOrgName = meta.org_name as string | undefined;
           const orgName = isSuperAdmin
             ? "LuxeState Admin"
-            : (firstName ? `${firstName}'s Workspace` : (email.split("@")[0] + "'s Workspace"));
+            : (rawOrgName?.trim() || (firstName ? `${firstName}'s Workspace` : (email.split("@")[0] + "'s Workspace")));
 
           const rawPlanSlug = meta.plan_slug as string | undefined;
           const selectedPlan: PaidPlanSlug = (rawPlanSlug && (VALID_PLAN_SLUGS as readonly string[]).includes(rawPlanSlug))
@@ -103,10 +115,23 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
           const plan = isSuperAdmin ? "agency" : selectedPlan;
           const status = isSuperAdmin ? "active" : (selectedPlan === "free" ? "active" : "trial");
 
-          await db.execute(sql`
+          const orgResult = await db.execute(sql`
             INSERT INTO organizations (name, owner_id, plan, subscription_status, is_internal, created_at, updated_at)
             VALUES (${orgName}, ${user.id}, ${plan}, ${status}, ${isSuperAdmin}, NOW(), NOW())
-          `).catch((err: any) => logger.error({ err }, "requireAuth: org auto-create failed"));
+            RETURNING id
+          `).catch((err: any) => { logger.error({ err }, "requireAuth: org auto-create failed"); return null; });
+
+          if (orgResult && orgResult.rows.length > 0) {
+            const newOrgId = (orgResult.rows[0] as any).id;
+            await db.execute(sql`
+              UPDATE users
+              SET organization_id = ${newOrgId},
+                  org_role = 'admin',
+                  updated_at = NOW()
+              WHERE id = ${user.id}
+            `);
+            logger.info({ userId: user.id, orgId: newOrgId, plan }, "Created organization for new owner");
+          }
         }
       }
     }

@@ -101,6 +101,7 @@ export default function SignUpPage() {
 
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [orgName, setOrgName] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
@@ -154,7 +155,7 @@ export default function SignUpPage() {
       email,
       password,
       options: {
-        data: { plan_slug: selectedPlan },
+        data: { plan_slug: selectedPlan, org_name: orgName.trim() || undefined },
         emailRedirectTo: `${window.location.origin}/sign-in`,
       },
     })
@@ -394,7 +395,7 @@ export default function SignUpPage() {
             </Badge>
           </div>
 
-          <h1 className="mb-1 text-2xl font-semibold text-foreground">Create your account</h1>
+          <h1 className="mb-1 text-2xl font-semibold text-foreground">Create your organization</h1>
           <p className="mb-6 text-sm text-muted-foreground">
             {selectedPlan === "free"
               ? "Get started for free — no credit card required."
@@ -422,6 +423,18 @@ export default function SignUpPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="org-name" className="text-sm font-medium">Organization name</Label>
+              <Input
+                id="org-name"
+                type="text"
+                value={orgName}
+                onChange={(e) => { setOrgName(e.target.value); setError("") }}
+                placeholder="e.g. Luxe Real Estate"
+                autoComplete="organization"
+                disabled={loading}
+              />
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="email" className="text-sm font-medium">Email address</Label>
               <Input

@@ -35,6 +35,42 @@ router.post("/invitations", requireAuth, async (req: any, res) => {
       return res.status(403).json({ error: "Only admins can invite members" });
     }
 
+    // Plan-based seat limits
+    const planRow = await db.execute(sql`
+      SELECT plan FROM organizations WHERE id = ${user.organization_id} LIMIT 1
+    `);
+    const plan = (planRow.rows[0] as any)?.plan ?? "free";
+
+    const PLAN_LIMITS: Record<string, number> = {
+      free: 1,
+      starter: 1,
+      professional: 5,
+      agency: Infinity,
+    };
+    const limit = PLAN_LIMITS[plan] ?? 1;
+
+    if (limit !== Infinity) {
+      const memberCount = await db.execute(sql`
+        SELECT COUNT(*) AS cnt FROM users WHERE organization_id = ${user.organization_id} AND is_active = true
+      `);
+      const currentMembers = Number((memberCount.rows[0] as any)?.cnt ?? 0);
+
+      const pendingCount = await db.execute(sql`
+        SELECT COUNT(*) AS cnt FROM invitations
+        WHERE organization_id = ${user.organization_id}
+          AND accepted_at IS NULL
+          AND expires_at > NOW()
+      `);
+      const pendingInvites = Number((pendingCount.rows[0] as any)?.cnt ?? 0);
+
+      if (currentMembers + pendingInvites >= limit) {
+        const planName = plan.charAt(0).toUpperCase() + plan.slice(1);
+        return res.status(403).json({
+          error: `Your ${planName} plan allows up to ${limit} user${limit === 1 ? "" : "s"}. Upgrade your plan to invite more team members.`,
+        });
+      }
+    }
+
     const { name, email, orgRole = "agent" } = req.body as {
       name: string;
       email: string;
