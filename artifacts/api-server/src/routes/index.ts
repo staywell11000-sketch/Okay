@@ -62,5 +62,6 @@ router.use(orgMembersRouter);
 router.use(supportRouter);
 router.use(privacyRouter);
 router.use(onboardingRouter);
+router.use("/health", healthRouter);
 
 export default router;
