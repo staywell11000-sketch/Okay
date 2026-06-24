@@ -12,5 +12,12 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
+    flowType: "pkce",
   },
 })
+
+export function getOAuthRedirectUrl(path: string = "/auth/callback"): string {
+  const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? ""
+  const origin = typeof window !== "undefined" ? window.location.origin : ""
+  return `${origin}${base}${path}`
+}

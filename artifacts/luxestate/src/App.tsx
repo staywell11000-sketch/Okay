@@ -42,6 +42,7 @@ import SignInPage from "@/pages/auth/sign-in"
 import SignUpPage from "@/pages/auth/sign-up"
 import ForgotPasswordPage from "@/pages/auth/forgot-password"
 import AcceptInvitePage from "@/pages/auth/accept-invite"
+import OAuthCallbackPage from "@/pages/auth/oauth-callback"
 import { DashboardLayout } from "@/pages/dashboard/layout"
 import OverviewPage from "@/pages/dashboard/overview"
 import LeadsPage from "@/pages/dashboard/leads"
@@ -95,19 +96,19 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function OnboardingGuard({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth()
-  const { data: profile, isLoading: profileLoading } = useCurrentUser(session?.user?.id)
+  const { data: profile, isLoading: profileLoading, isError: profileError } = useCurrentUser(session?.user?.id)
   if (loading || (!!session && profileLoading)) return <LoadingScreen />
   if (!session) return <Redirect to="/sign-in" />
-  if (profile && !profile.onboarded) return <Redirect to="/onboarding" />
+  if (profileError || !profile || !profile.onboarded) return <Redirect to="/onboarding" />
   return <>{children}</>
 }
 
 function OnboardingRoute({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth()
-  const { data: profile, isLoading: profileLoading } = useCurrentUser(session?.user?.id)
+  const { data: profile, isLoading: profileLoading, isError: profileError } = useCurrentUser(session?.user?.id)
   if (loading || (!!session && profileLoading)) return <LoadingScreen />
   if (!session) return <Redirect to="/sign-in" />
-  if (profile?.onboarded) return <Redirect to="/dashboard" />
+  if (profileError || !profile || profile.onboarded) return <Redirect to="/dashboard" />
   return <>{children}</>
 }
 
@@ -236,6 +237,7 @@ function Router() {
       </Route>
       <Route path="/accept-invite" component={AcceptInvitePage} />
       <Route path="/forgot-password" component={ForgotPasswordPage} />
+      <Route path="/auth/callback" component={OAuthCallbackPage} />
       <Route path="/onboarding">
         <OnboardingRoute><OnboardingPage /></OnboardingRoute>
       </Route>

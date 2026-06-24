@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Link } from "wouter"
-import { supabase } from "@/lib/supabase"
+import { supabase, getOAuthRedirectUrl } from "@/lib/supabase"
 import { checkEmailExists } from "@/lib/auth-api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -121,22 +121,23 @@ export default function SignInPage() {
   const handleGoogle = async () => {
     setGoogleLoading(true)
     setAuthError(null)
-    const base = import.meta.env.BASE_URL.replace(/\/$/, "")
+    const redirectTo = getOAuthRedirectUrl("/dashboard")
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}${base}/dashboard` },
+      options: { redirectTo },
     })
     if (error) {
       const msg = error.message.toLowerCase()
+      const isProviderDisabled = 
+        msg.includes("provider") || 
+        msg.includes("not enabled") || 
+        msg.includes("unsupported") ||
+        msg.includes("disabled")
       setAuthError({
-        type:
-          msg.includes("provider") || msg.includes("not enabled")
-            ? "google_disabled"
-            : "generic",
-        message:
-          msg.includes("provider") || msg.includes("not enabled") || msg.includes("unsupported")
-            ? "Google sign-in isn't enabled yet. Enable it in your Supabase Dashboard → Authentication → Providers."
-            : "Google sign-in failed. Please try again.",
+        type: isProviderDisabled ? "google_disabled" : "generic",
+        message: isProviderDisabled
+          ? "Google sign-in isn't enabled yet. Enable it in your Supabase Dashboard → Authentication → Providers → Google."
+          : "Google sign-in failed. Please try again.",
       })
       setGoogleLoading(false)
     }
