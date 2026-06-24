@@ -4,9 +4,9 @@
   "license": "MIT",
   "scripts": {
     "preinstall": "node -e \"try { require('fs').unlinkSync('package-lock.json'); require('fs').unlinkSync('yarn.lock'); } catch {}\" && node -e \"if (!/pnpm/.test(process.env.npm_config_user_agent)) { console.error('Use pnpm instead'); process.exit(1) }\"",
-    "build": "pnpm run typecheck && pnpm -r --if-present run build",
-    "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
+    "build": "tsc --build && pnpm -r --if-present run build",
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
+    "typecheck:libs": "tsc --build"
   },
   "private": true,
   "devDependencies": {
