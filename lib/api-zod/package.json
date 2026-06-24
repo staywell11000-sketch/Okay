@@ -7,6 +7,10 @@
     ".": "./src/index.ts",
     "./api": "./src/api.ts"
   },
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "zod": "catalog:"
   }
