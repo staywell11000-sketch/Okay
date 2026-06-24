@@ -53,11 +53,18 @@ router.get("/properties", requireAuth, async (req: any, res) => {
 
     const where = and(...conditions);
 
-    const orderBy =
-      sort === "price_asc" ? asc(properties.price)
-      : sort === "price_desc" ? desc(properties.price)
-      : sort === "oldest" ? asc(properties.createdAt)
-      : desc(properties.createdAt);
+    const orderBy = (() => {
+      switch (sort) {
+        case "price_asc": return asc(properties.price);
+        case "price_desc": return desc(properties.price);
+        case "oldest": return asc(properties.createdAt);
+        case "sector": case "sector_asc": return asc(properties.sector);
+        case "sector_desc": return desc(properties.sector);
+        case "ms_number": case "ms_number_asc": return asc(properties.mlsNumber);
+        case "ms_number_desc": return desc(properties.mlsNumber);
+        default: return desc(properties.createdAt);
+      }
+    })();
 
     const [rows, totalResult] = await Promise.all([
       db.select().from(properties).where(where).orderBy(orderBy)
