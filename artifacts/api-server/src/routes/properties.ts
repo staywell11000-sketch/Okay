@@ -137,10 +137,10 @@ router.get("/properties/:id", requireAuth, async (req: any, res) => {
       .limit(1);
 
     if (!row) return res.status(404).json({ error: "Property not found" });
-    res.json(row);
+    return res.json(row);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to get property" });
+    return res.status(500).json({ error: "Failed to get property" });
   }
 });
 
@@ -182,10 +182,10 @@ router.put("/properties/:id", requireAuth, async (req: any, res) => {
     }).where(and(eq(properties.id, id), eq(properties.listedById, userId))).returning();
 
     if (!row) return res.status(404).json({ error: "Property not found" });
-    res.json(row);
+    return res.json(row);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to update property" });
+    return res.status(500).json({ error: "Failed to update property" });
   }
 });
 
@@ -204,10 +204,10 @@ router.patch("/properties/:id/status", requireAuth, async (req: any, res) => {
       .returning();
 
     if (!row) return res.status(404).json({ error: "Property not found" });
-    res.json(row);
+    return res.json(row);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to update status" });
+    return res.status(500).json({ error: "Failed to update status" });
   }
 });
 
@@ -278,10 +278,10 @@ router.post("/properties/bulk", requireAuth, async (req: any, res) => {
       }
     }
 
-    res.json(results);
+    return res.json(results);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Bulk import failed" });
+    return res.status(500).json({ error: "Bulk import failed" });
   }
 });
 
@@ -292,10 +292,10 @@ router.delete("/properties/:id", requireAuth, async (req: any, res) => {
     if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
 
     await db.delete(properties).where(and(eq(properties.id, id), eq(properties.listedById, userId)));
-    res.status(204).send();
+    return res.status(204).send();
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to delete property" });
+    return res.status(500).json({ error: "Failed to delete property" });
   }
 });
 
